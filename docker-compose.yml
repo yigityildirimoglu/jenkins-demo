@@ -1,0 +1,68 @@
+services:
+  # ============================================
+  # Jenkins CI/CD Server
+  # ============================================
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    user: root
+    restart: unless-stopped
+    ports:
+      - "8080:8080"      # Jenkins Web UI
+      - "50000:50000"    # Jenkins Agent Port
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
+    environment:
+      # Setup wizard açık - ilk admin şifresi verilecek
+      - JENKINS_OPTS=--httpPort=8080
+    networks:
+      - jenkins-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/login || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ============================================
+  # FastAPI Demo Application
+  # ============================================
+  fastapi-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-demo
+    restart: unless-stopped
+    ports:
+      - "8000:8000"      # FastAPI App
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+    networks:
+      - jenkins-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      jenkins:
+        condition: service_healthy
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  jenkins-network:
+    driver: bridge
+    name: jenkins-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  jenkins_home:
+    name: jenkins_home
+    driver: local

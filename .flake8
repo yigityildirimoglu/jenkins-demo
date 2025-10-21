@@ -1,0 +1,34 @@
+[flake8]
+# Maximum line length
+max-line-length = 100
+
+# Exclude directories
+exclude =
+    .git,
+    __pycache__,
+    venv,
+    env,
+    .venv,
+    htmlcov,
+    .pytest_cache,
+    build,
+    dist
+
+# Ignore specific warnings
+ignore =
+    # W503: line break before binary operator (conflicts with black)
+    W503,
+    # E203: whitespace before ':' (conflicts with black)
+    E203
+
+# Maximum complexity
+max-complexity = 10
+
+# Show source code for errors
+show-source = True
+
+# Show pep8 violation details
+statistics = True
+
+# Count errors
+count = True
