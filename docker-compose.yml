@@ -3,7 +3,10 @@ services:
   # Jenkins CI/CD Server
   # ============================================
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    image: jenkins-with-docker:latest
     container_name: jenkins
     user: root
     restart: unless-stopped
@@ -14,7 +17,6 @@ services:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
     environment:
-      # Setup wizard açık - ilk admin şifresi verilecek
       - JENKINS_OPTS=--httpPort=8080
     networks:
       - jenkins-network
