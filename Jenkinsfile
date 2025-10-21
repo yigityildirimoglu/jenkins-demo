@@ -2,16 +2,12 @@ pipeline {
     agent any
 
     environment {
-        // Docker Hub credentials (configure in Jenkins)
-        DOCKER_HUB_CREDENTIALS = credentials('dockerhub-credentials')
-        DOCKER_IMAGE_NAME = 'yourusername/jenkins-demo-api'
+        // Docker image configuration
+        DOCKER_IMAGE_NAME = 'jenkins-demo-api'
         DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
 
         // Coverage threshold
         COVERAGE_THRESHOLD = '50'
-
-        // Docker Hub push control
-        DOCKER_HUB_AVAILABLE = 'true'
     }
 
     stages {
@@ -152,24 +148,9 @@ print(f'{line_rate * 100:.2f}')
         // ============================================
         stage('7️⃣ Push to Docker Hub') {
             when {
-                // Only push on main/master branch or manual trigger
-                allOf {
-                    anyOf {
-                        branch 'main'
-                        branch 'master'
-                        expression { params.FORCE_PUSH == true }
-                    }
-                    expression {
-                        // Check if Docker Hub credentials are available
-                        try {
-                            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USR', passwordVariable: 'DOCKER_PSW')]) {
-                                return true
-                            }
-                        } catch (Exception e) {
-                            echo "Docker Hub credentials not found, skipping push stage"
-                            return false
-                        }
-                    }
+                anyOf {
+                    branch 'main'
+                    branch 'master'
                 }
             }
             steps {
@@ -177,18 +158,30 @@ print(f'{line_rate * 100:.2f}')
                     echo '=========================================='
                     echo 'Stage 7: Pushing image to Docker Hub...'
                     echo '=========================================='
+                    
+                    try {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'dockerhub-credentials',
+                            usernameVariable: 'DOCKER_USR',
+                            passwordVariable: 'DOCKER_PSW'
+                        )]) {
+                            sh '''
+                                echo "Logging into Docker Hub..."
+                                echo $DOCKER_PSW | docker login -u $DOCKER_USR --password-stdin
+
+                                echo "Pushing image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                                docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                                docker push ${DOCKER_IMAGE_NAME}:latest
+
+                                echo "✅ Docker image pushed successfully"
+                                docker logout
+                            '''
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Docker Hub credentials not found, skipping push"
+                        echo "Error: ${e.message}"
+                    }
                 }
-                sh '''
-                    echo "Logging into Docker Hub..."
-                    echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin
-
-                    echo "Pushing image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-                    docker push ${DOCKER_IMAGE_NAME}:latest
-
-                    echo "✅ Docker image pushed successfully"
-                    docker logout
-                '''
             }
         }
     }
@@ -198,31 +191,29 @@ print(f'{line_rate * 100:.2f}')
     // ============================================
     post {
         always {
-            echo '=========================================='
-            echo 'Cleaning up and publishing reports...'
-            echo '=========================================='
+            script {
+                echo '=========================================='
+                echo 'Cleaning up and publishing reports...'
+                echo '=========================================='
+            }
 
             // Publish test results
-            node {
-                junit testResults: 'test-results.xml', allowEmptyResults: true
-            }
+            junit testResults: 'test-results.xml', allowEmptyResults: true
 
             // Publish coverage report
-            node {
-                publishHTML([
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'htmlcov',
-                    reportFiles: 'index.html',
-                    reportName: 'Coverage Report',
-                    reportTitles: 'Code Coverage'
-                ])
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'htmlcov',
+                reportFiles: 'index.html',
+                reportName: 'Coverage Report',
+                reportTitles: 'Code Coverage'
+            ])
 
-                // Archive artifacts
-                archiveArtifacts artifacts: 'htmlcov/**, coverage.xml, test-results.xml',
-                                 allowEmptyArchive: true
-            }
+            // Archive artifacts
+            archiveArtifacts artifacts: 'htmlcov/**, coverage.xml, test-results.xml',
+                             allowEmptyArchive: true
 
             // Clean up Docker images to save space
             sh '''
