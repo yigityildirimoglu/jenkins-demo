@@ -7,11 +7,11 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yourusername/jenkins-demo-api'
         DOCKER_IMAGE_TAG = "${BUILD_NUMBER}"
 
-        // Slack/Email notification settings
-        NOTIFICATION_EMAIL = 'your-email@example.com'
-
         // Coverage threshold
         COVERAGE_THRESHOLD = '50'
+
+        // Docker Hub push control
+        DOCKER_HUB_AVAILABLE = 'true'
     }
 
     stages {
@@ -153,10 +153,23 @@ print(f'{line_rate * 100:.2f}')
         stage('7️⃣ Push to Docker Hub') {
             when {
                 // Only push on main/master branch or manual trigger
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    expression { params.FORCE_PUSH == true }
+                allOf {
+                    anyOf {
+                        branch 'main'
+                        branch 'master'
+                        expression { params.FORCE_PUSH == true }
+                    }
+                    expression {
+                        // Check if Docker Hub credentials are available
+                        try {
+                            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USR', passwordVariable: 'DOCKER_PSW')]) {
+                                return true
+                            }
+                        } catch (Exception e) {
+                            echo "Docker Hub credentials not found, skipping push stage"
+                            return false
+                        }
+                    }
                 }
             }
             steps {
@@ -190,22 +203,26 @@ print(f'{line_rate * 100:.2f}')
             echo '=========================================='
 
             // Publish test results
-            junit testResults: 'test-results.xml', allowEmptyResults: true
+            node {
+                junit testResults: 'test-results.xml', allowEmptyResults: true
+            }
 
             // Publish coverage report
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'htmlcov',
-                reportFiles: 'index.html',
-                reportName: 'Coverage Report',
-                reportTitles: 'Code Coverage'
-            ])
+            node {
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'htmlcov',
+                    reportFiles: 'index.html',
+                    reportName: 'Coverage Report',
+                    reportTitles: 'Code Coverage'
+                ])
 
-            // Archive artifacts
-            archiveArtifacts artifacts: 'htmlcov/**, coverage.xml, test-results.xml',
-                             allowEmptyArchive: true
+                // Archive artifacts
+                archiveArtifacts artifacts: 'htmlcov/**, coverage.xml, test-results.xml',
+                                 allowEmptyArchive: true
+            }
 
             // Clean up Docker images to save space
             sh '''
@@ -218,25 +235,6 @@ print(f'{line_rate * 100:.2f}')
                 echo '=========================================='
                 echo '✅ ✅ ✅ PIPELINE SUCCESS! ✅ ✅ ✅'
                 echo '=========================================='
-
-                // Email notification (configure SMTP in Jenkins)
-                emailext(
-                    subject: "✅ Jenkins Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                    body: """
-                        <h2>Build Successful! 🎉</h2>
-                        <p><strong>Job:</strong> ${env.JOB_NAME}</p>
-                        <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
-                        <p><strong>Status:</strong> SUCCESS ✅</p>
-                        <p><strong>Duration:</strong> ${currentBuild.durationString}</p>
-                        <p><strong>Docker Image:</strong> ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}</p>
-                        <hr>
-                        <p><a href="${env.BUILD_URL}">View Build</a></p>
-                        <p><a href="${env.BUILD_URL}Coverage_Report/">View Coverage Report</a></p>
-                    """,
-                    mimeType: 'text/html',
-                    to: "${NOTIFICATION_EMAIL}",
-                    attachLog: false
-                )
 
                 // Slack notification (install Slack plugin & configure)
                 // slackSend(
@@ -253,24 +251,6 @@ print(f'{line_rate * 100:.2f}')
                 echo '=========================================='
                 echo '❌ ❌ ❌ PIPELINE FAILED! ❌ ❌ ❌'
                 echo '=========================================='
-
-                // Email notification for failure
-                emailext(
-                    subject: "❌ Jenkins Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                    body: """
-                        <h2>Build Failed! ❌</h2>
-                        <p><strong>Job:</strong> ${env.JOB_NAME}</p>
-                        <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
-                        <p><strong>Status:</strong> FAILURE ❌</p>
-                        <p><strong>Duration:</strong> ${currentBuild.durationString}</p>
-                        <hr>
-                        <p><a href="${env.BUILD_URL}">View Build</a></p>
-                        <p><a href="${env.BUILD_URL}console">View Console Output</a></p>
-                    """,
-                    mimeType: 'text/html',
-                    to: "${NOTIFICATION_EMAIL}",
-                    attachLog: true
-                )
 
                 // Slack notification (install Slack plugin & configure)
                 // slackSend(
