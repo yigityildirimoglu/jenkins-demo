@@ -68,7 +68,8 @@ print(f'{line_rate * 100:.2f}')
                     echo "Current coverage: ${coverage_percentage}%"
                     echo "Required coverage: ${COVERAGE_THRESHOLD}%"
                     
-                    if (( $(echo "$coverage_percentage >= ${COVERAGE_THRESHOLD}" | bc -l) )); then
+                    result=$(echo "$coverage_percentage >= ${COVERAGE_THRESHOLD}" | bc -l)
+                    if [ "$result" -eq 1 ]; then
                         echo "✅ Coverage check passed!"
                     else
                         echo "❌ Coverage ${coverage_percentage}% is below threshold ${COVERAGE_THRESHOLD}%"
