@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'python:3.11-slim'
+            args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
+        }
+    }
 
     environment {
         // Docker image configuration
@@ -12,18 +17,28 @@ pipeline {
 
     stages {
         // ============================================
-        // STAGE 1: Checkout
+        // STAGE 1: Setup Environment
         // ============================================
-        stage('1️⃣ Checkout') {
+        stage('1️⃣ Setup Environment') {
             steps {
                 script {
                     echo '=========================================='
-                    echo 'Stage 1: Checking out code from Git...'
+                    echo 'Stage 1: Setting up environment...'
                     echo '=========================================='
                 }
-                checkout scm
-                sh 'echo "✅ Code checked out successfully"'
-                sh 'ls -la'
+                sh '''
+                    # Install required tools
+                    apt-get update -qq
+                    apt-get install -y -qq docker.io curl bc > /dev/null 2>&1
+                    
+                    echo "✅ Docker CLI installed"
+                    docker --version
+                    
+                    echo "✅ Python installed"
+                    python --version
+                    
+                    echo "✅ Environment setup completed"
+                '''
             }
         }
 
@@ -38,10 +53,8 @@ pipeline {
                     echo '=========================================='
                 }
                 sh '''
-                    python3 -m venv venv
-                    . venv/bin/activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
+                    pip install --upgrade pip --quiet
+                    pip install -r requirements.txt --quiet
                     echo "✅ Dependencies installed successfully"
                 '''
             }
@@ -58,7 +71,6 @@ pipeline {
                     echo '=========================================='
                 }
                 sh '''
-                    . venv/bin/activate
                     echo "Running flake8 code quality checks..."
                     flake8 app/ tests/ --config=.flake8 || true
                     echo "✅ Linting completed"
@@ -77,7 +89,6 @@ pipeline {
                     echo '=========================================='
                 }
                 sh '''
-                    . venv/bin/activate
                     pytest tests/ \
                         --verbose \
                         --cov=app \
@@ -101,7 +112,6 @@ pipeline {
                     echo '=========================================='
                 }
                 sh '''
-                    . venv/bin/activate
                     coverage_percentage=$(python -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
