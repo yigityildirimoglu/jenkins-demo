@@ -15,6 +15,7 @@ services:
       - "50000:50000"    # Jenkins Agent Port
     volumes:
       - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket mount
     environment:
       - JENKINS_OPTS=--httpPort=8080
     privileged: true  # Docker daemon için gerekli
