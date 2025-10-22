@@ -89,7 +89,7 @@ async def update_item(item_id: int, updated_item: Item):
 
 @app.delete("/items/{item_id}")
 async def delete_item(item_id: int):
-    """Delete an item"""
+    """Delete anasdsadsadsadsa item"""
     for idx, item in enumerate(items_db):
         if item.id == item_id:
             items_db.pop(idx)
