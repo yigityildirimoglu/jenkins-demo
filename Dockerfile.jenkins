@@ -8,12 +8,12 @@ RUN curl -fsSL https://get.docker.com -o get-docker.sh && \
     rm get-docker.sh && \
     docker --version
 
-# Docker daemon konfigürasyonu
+# Docker daemon konfigürasyonu (containerd olmadan)
 RUN mkdir -p /etc/docker && \
-    echo '{"iptables": false, "default-address-pools": [{"base": "172.16.0.0/16", "size": 24}]}' > /etc/docker/daemon.json
+    echo '{"default-address-pools": [{"base": "172.16.0.0/16", "size": 24}]}' > /etc/docker/daemon.json
 
-# Jenkins kullanıcısını docker grubuna ekle
-RUN usermod -aG docker jenkins
+# Root kullanıcısını docker grubuna ekle (Jenkins'i root olarak başlatacağız)
+RUN usermod -aG docker root
 
 # Docker daemon'ı başlatmak için script
 COPY start-docker.sh /usr/local/bin/start-docker.sh
@@ -21,6 +21,4 @@ RUN chmod +x /usr/local/bin/start-docker.sh
 
 # Jenkins'i başlatırken Docker daemon'ı da başlat
 ENTRYPOINT ["/usr/local/bin/start-docker.sh"]
-
-USER jenkins
 
