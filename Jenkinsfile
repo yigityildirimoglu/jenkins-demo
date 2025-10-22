@@ -192,8 +192,8 @@ print(f'{line_rate * 100:.2f}')
                         docker ps | grep jenkins-demo-app
 
                         echo "✅ Deployment completed!"
-                        echo "🌐 App available at: http://localhost:8000"
-                        echo "💚 Health check: http://localhost:8000/health"
+                        echo "🌐 App available at: http://localhost:8001"
+                        echo "💚 Health check: http://localhost:8001/health"
                         echo "📦 Image: ${imageTag}"
                     """
                 }
