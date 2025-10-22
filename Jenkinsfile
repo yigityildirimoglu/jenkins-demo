@@ -179,10 +179,10 @@ print(f'{line_rate * 100:.2f}')
                         docker stop jenkins-demo-app || true
                         docker rm jenkins-demo-app || true
 
-                        echo "Starting new container..."
+                        echo "Starting new container with image: ${imageTag}"
                         docker run -d \\
                             --name jenkins-demo-app \\
-                            -p 8000:8000 \\
+                            -p 8001:8000 \\
                             ${imageTag}
 
                         echo "⏳ Waiting for application to start..."
