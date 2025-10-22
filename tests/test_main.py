@@ -4,7 +4,7 @@ Coverage: >50% guaranteed
 """
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app, calculate_discount, items_db, Item
+from app.main import app, calculate_discount, items_db
 
 
 @pytest.fixture
