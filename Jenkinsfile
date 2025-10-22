@@ -9,7 +9,7 @@ pipeline {
     environment {
         COVERAGE_THRESHOLD = '50'
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
-        DOCKER_TAG = "${BUILD_NUMBER}"
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
