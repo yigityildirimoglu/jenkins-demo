@@ -123,6 +123,10 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '🐳 Building Docker image...'
+                    echo "📊 Build Number: ${env.BUILD_NUMBER}"
+                    echo "🔢 Job Name: ${env.JOB_NAME}"
+                    echo "🔗 Build URL: ${env.BUILD_URL}"
+
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
