@@ -1,6 +1,5 @@
 pipeline {
     // EC2 kurulumumuz için 'agent any' olarak değiştirildi.
-    // Artık 'docker:dind' agent'ına ihtiyacımız yok.
     agent any
 
     environment {
@@ -19,7 +18,7 @@ pipeline {
         }
 
         // Bu aşamalar, ana makinedeki (EC2) Docker'ı kullanarak
-        // izole Python konteynerleri içinde çalışacak. (Burası mükemmel)
+        // izole Python konteynerleri içinde çalışacak.
         stage('Install Dependencies') {
             agent {
                 docker {
@@ -48,8 +47,7 @@ pipeline {
                 sh 'pip install --quiet -r requirements.txt'
 
                 echo 'Running code quality checks...'
-                // ÖNEMLİ TAVSİYE: '|| true' kısmını kaldırmalısınız.
-                // Lint hatası pipeline'ı durdurmalıdır.
+                // DÜZELTME: '|| true' kaldırıldı. Lint hatası artık build'i durduracak.
                 sh 'flake8 app/ tests/ --config=.flake8'
                 sh 'echo "Linting completed"'
             }
@@ -121,7 +119,6 @@ print(f'{line_rate * 100:.2f}')
         }
 
         // Bu aşama 'agent any' (EC2 Sunucu A) üzerinde çalışacak.
-        // 'jenkins' kullanıcısını 'docker' grubuna eklediğimiz için bu komut çalışacak.
         stage('Build Docker Image') {
             steps {
                 script {
@@ -164,8 +161,7 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // YENİ DEPLOY AŞAMASI
-        // Bu aşama, Jenkins'ten (Sunucu A) SSH ile Deploy Sunucusuna (Sunucu B) bağlanır.
+        // YENİ ve DÜZELTİLMİŞ DEPLOY AŞAMASI
         stage('Deploy to Production EC2') {
             steps {
                 script {
@@ -173,43 +169,43 @@ print(f'{line_rate * 100:.2f}')
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def deployServerUser = 'ec2-user' // Sunucu B'nin kullanıcı adı
                     
-                    // !!! DEĞİŞTİR !!! Buraya Sunucu B'nin Public IP adresini yazın
+                    // !!! DEĞİŞTİR !!! Buraya Sunucu B'nin (Deploy Sunucusu) Public IP adresini yazın
                     def deployServerIp = '<SUNUCU_B_NIN_PUBLIC_IP_ADRESI>' 
                     
                     def appPort = '8001' // Sunucu B'nin Security Group'unda açtığımız port
 
-                    // Hem Docker Hub şifresini (Sunucu B'de pull için)
-                    // hem de Sunucu B'nin SSH anahtarını (bağlanmak için) yüklüyoruz
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         // Jenkins'e eklediğimiz 'deploy-server-ssh-key' ID'li anahtarı kullanır.
                         sshagent(credentials: ['deploy-server-ssh-key']) {
                             
                             // Aşağıdaki 'sh' bloğunun tamamı SSH üzerinden Sunucu B'de çalıştırılır
+                            // DÜZELTME: Güvenlik uyarısı (\$) ve syntax hatası ([]) düzeltildi.
                             sh """
                                 ssh -o StrictHostKeyChecking=no ${deployServerUser}@${deployServerIp} '
                                     
-                                    echo "🎯 (Sunucu B) Başarıyla bağlandım!"
+                                    echo "🎯 [Sunucu B] Başarıyla bağlandım!"
                                     
-                                    echo "🔐 (Sunucu B) Docker Hub'a login oluyorum..."
-                                    echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                                    echo "🔐 [Sunucu B] Docker Hub'a login oluyorum..."
+                                    # Güvenli değişken kullanımı için \ eklendi
+                                    echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
                                     
-                                    echo "🐳 (Sunucu B) Yeni imajı Docker Hub'dan çekiyorum: ${imageTag}"
+                                    echo "🐳 [Sunucu B] Yeni imajı Docker Hub'dan çekiyorum: ${imageTag}"
                                     docker pull ${imageTag}
                                     
-                                    echo "🛑 (Sunucu B) Eski konteyneri durduruyorum..."
+                                    echo "🛑 [Sunucu B] Eski konteyneri durduruyorum..."
                                     docker stop jenkins-demo-app || true
                                     docker rm jenkins-demo-app || true
                                     
-                                    echo "🚀 (Sunucu B) Yeni konteyneri başlatıyorum..."
+                                    echo "🚀 [Sunucu B] Yeni konteyneri başlatıyorum..."
                                     docker run -d \\
                                         --name jenkins-demo-app \\
                                         -p ${appPort}:8000 \\
                                         ${imageTag}
                                     
-                                    echo "🧹 (Sunucu B) Eski Docker imajlarını temizliyorum..."
+                                    echo "🧹 [Sunucu B] Eski Docker imajlarını temizliyorum..."
                                     docker image prune -f
 
-                                    echo "✅ (Sunucu B) Deployment tamamlandı!"
+                                    echo "✅ [Sunucu B] Deployment tamamlandı!"
                                     echo "🌐 Uygulama artık burada çalışıyor: http://${deployServerIp}:${appPort}"
                                 '
                             """
