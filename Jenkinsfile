@@ -165,7 +165,7 @@ print(f'{line_rate * 100:.2f}')
                     def deployServerUser = 'ec2-user' // Sunucu B'nin kullanıcı adı
                     
                     // !!! DEĞİŞTİR !!! Buraya Sunucu B'nin (Deploy Sunucusu) Public IP adresini yazın
-                    def deployServerIp = '<SUNUCU_B_NIN_PUBLIC_IP_ADRESI>' 
+                    def deployServerIp = '54.87.26.234' 
                     
                     def appPort = '8001' // Sunucu B'nin Security Group'unda açtığımız port
 
