@@ -17,8 +17,6 @@ pipeline {
             }
         }
 
-        // Bu aşamalar, ana makinedeki (EC2) Docker'ı kullanarak
-        // izole Python konteynerleri içinde çalışacak.
         stage('Install Dependencies') {
             agent {
                 docker {
@@ -118,7 +116,6 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // Bu aşama 'agent any' (EC2 Sunucu A) üzerinde çalışacak.
         stage('Build Docker Image') {
             steps {
                 script {
@@ -136,7 +133,6 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // Bu aşama da 'agent any' (EC2 Sunucu A) üzerinde çalışacak.
         stage('Push to Docker Hub') {
             steps {
                 script {
@@ -144,7 +140,6 @@ print(f'{line_rate * 100:.2f}')
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
-                    // Jenkins'e eklediğimiz 'dockerhub-credentials' ID'li şifreyi kullanır.
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
                             echo "🔐 Logging in to Docker Hub..."
@@ -161,7 +156,7 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // YENİ ve DÜZELTİLMİŞ DEPLOY AŞAMASI
+        // DÜZELTİLMİŞ DEPLOY AŞAMASI (Hatalı yorum satırı kaldırıldı)
         stage('Deploy to Production EC2') {
             steps {
                 script {
@@ -175,11 +170,8 @@ print(f'{line_rate * 100:.2f}')
                     def appPort = '8001' // Sunucu B'nin Security Group'unda açtığımız port
 
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        // Jenkins'e eklediğimiz 'deploy-server-ssh-key' ID'li anahtarı kullanır.
                         sshagent(credentials: ['deploy-server-ssh-key']) {
                             
-                            // Aşağıdaki 'sh' bloğunun tamamı SSH üzerinden Sunucu B'de çalıştırılır
-                            // DÜZELTME: Güvenlik uyarısı (\$) ve syntax hatası ([]) düzeltildi.
                             sh """
                                 ssh -o StrictHostKeyChecking=no ${deployServerUser}@${deployServerIp} '
                                     
@@ -216,7 +208,6 @@ print(f'{line_rate * 100:.2f}')
         }
     } // stages bloğu kapanışı
 
-    // post bloğu değişmeden kalır
     post {
         always {
             junit testResults: 'test-results.xml', allowEmptyResults: true
