@@ -44,6 +44,10 @@ pipeline {
                 }
             }
             steps {
+                echo 'Installing Python dependencies...'
+                sh 'pip install --quiet --upgrade pip'
+                sh 'pip install --quiet -r requirements.txt'
+
                 echo 'Running code quality checks...'
                 sh 'flake8 app/ tests/ --config=.flake8 || true'
                 sh 'echo "Linting completed"'
@@ -58,6 +62,10 @@ pipeline {
                 }
             }
             steps {
+                echo 'Installing Python dependencies...'
+                sh 'pip install --quiet --upgrade pip'
+                sh 'pip install --quiet -r requirements.txt'
+
                 echo 'Running unit tests with coverage...'
                 sh '''
                     pytest tests/ \
@@ -80,6 +88,10 @@ pipeline {
                 }
             }
             steps {
+                echo 'Installing Python dependencies...'
+                sh 'pip install --quiet --upgrade pip'
+                sh 'pip install --quiet -r requirements.txt'
+
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
                 sh '''
                     apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
