@@ -1,9 +1,11 @@
 pipeline {
+    // EC2 kurulumumuz için 'agent any' olarak değiştirildi.
+    // Artık 'docker:dind' agent'ına ihtiyacımız yok.
     agent any
 
     environment {
         COVERAGE_THRESHOLD = '50'
-        DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
+        DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api' // Docker Hub kullanıcı adınız/repo adınız
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
     }
@@ -16,6 +18,8 @@ pipeline {
             }
         }
 
+        // Bu aşamalar, ana makinedeki (EC2) Docker'ı kullanarak
+        // izole Python konteynerleri içinde çalışacak. (Burası mükemmel)
         stage('Install Dependencies') {
             agent {
                 docker {
@@ -44,7 +48,9 @@ pipeline {
                 sh 'pip install --quiet -r requirements.txt'
 
                 echo 'Running code quality checks...'
-                sh 'flake8 app/ tests/ --config=.flake8 || true'
+                // ÖNEMLİ TAVSİYE: '|| true' kısmını kaldırmalısınız.
+                // Lint hatası pipeline'ı durdurmalıdır.
+                sh 'flake8 app/ tests/ --config=.flake8'
                 sh 'echo "Linting completed"'
             }
         }
@@ -89,6 +95,7 @@ pipeline {
 
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
                 sh '''
+                    # Python imajında 'bc' yüklü gelmez, kuruyoruz.
                     apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
 
                     coverage_percentage=$(python -c "
@@ -113,14 +120,12 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
+        // Bu aşama 'agent any' (EC2 Sunucu A) üzerinde çalışacak.
+        // 'jenkins' kullanıcısını 'docker' grubuna eklediğimiz için bu komut çalışacak.
         stage('Build Docker Image') {
             steps {
                 script {
                     echo '🐳 Building Docker image...'
-                    echo "📊 Build Number: ${env.BUILD_NUMBER}"
-                    echo "🔢 Job Name: ${env.JOB_NAME}"
-                    echo "🔗 Build URL: ${env.BUILD_URL}"
-
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
@@ -134,16 +139,15 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
+        // Bu aşama da 'agent any' (EC2 Sunucu A) üzerinde çalışacak.
         stage('Push to Docker Hub') {
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
-                    echo "📦 Repository: ${DOCKER_IMAGE_NAME}"
-                    echo "🏷️  Tag: ${DOCKER_TAG}"
-
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
+                    // Jenkins'e eklediğimiz 'dockerhub-credentials' ID'li şifreyi kullanır.
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
                             echo "🔐 Logging in to Docker Hub..."
@@ -154,48 +158,69 @@ print(f'{line_rate * 100:.2f}')
                             echo "📤 Pushing ${imageLatest}..."
                             docker push ${imageLatest}
                             echo "✅ Docker images pushed successfully!"
-                            echo "   - ${imageTag}"
-                            echo "   - ${imageLatest}"
                         """
                     }
                 }
             }
         }
 
-        stage('Deploy') {
+        // YENİ DEPLOY AŞAMASI
+        // Bu aşama, Jenkins'ten (Sunucu A) SSH ile Deploy Sunucusuna (Sunucu B) bağlanır.
+        stage('Deploy to Production EC2') {
             steps {
                 script {
-                    echo '🚀 Deploying application...'
+                    echo '🚀 Deploying application to Production EC2 (Sunucu B)...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
-                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+                    def deployServerUser = 'ec2-user' // Sunucu B'nin kullanıcı adı
+                    
+                    // !!! DEĞİŞTİR !!! Buraya Sunucu B'nin Public IP adresini yazın
+                    def deployServerIp = '<SUNUCU_B_NIN_PUBLIC_IP_ADRESI>' 
+                    
+                    def appPort = '8001' // Sunucu B'nin Security Group'unda açtığımız port
 
-                    sh """
-                        echo "Stopping existing container if running..."
-                        docker stop jenkins-demo-app || true
-                        docker rm jenkins-demo-app || true
+                    // Hem Docker Hub şifresini (Sunucu B'de pull için)
+                    // hem de Sunucu B'nin SSH anahtarını (bağlanmak için) yüklüyoruz
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        // Jenkins'e eklediğimiz 'deploy-server-ssh-key' ID'li anahtarı kullanır.
+                        sshagent(credentials: ['deploy-server-ssh-key']) {
+                            
+                            // Aşağıdaki 'sh' bloğunun tamamı SSH üzerinden Sunucu B'de çalıştırılır
+                            sh """
+                                ssh -o StrictHostKeyChecking=no ${deployServerUser}@${deployServerIp} '
+                                    
+                                    echo "🎯 (Sunucu B) Başarıyla bağlandım!"
+                                    
+                                    echo "🔐 (Sunucu B) Docker Hub'a login oluyorum..."
+                                    echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                                    
+                                    echo "🐳 (Sunucu B) Yeni imajı Docker Hub'dan çekiyorum: ${imageTag}"
+                                    docker pull ${imageTag}
+                                    
+                                    echo "🛑 (Sunucu B) Eski konteyneri durduruyorum..."
+                                    docker stop jenkins-demo-app || true
+                                    docker rm jenkins-demo-app || true
+                                    
+                                    echo "🚀 (Sunucu B) Yeni konteyneri başlatıyorum..."
+                                    docker run -d \\
+                                        --name jenkins-demo-app \\
+                                        -p ${appPort}:8000 \\
+                                        ${imageTag}
+                                    
+                                    echo "🧹 (Sunucu B) Eski Docker imajlarını temizliyorum..."
+                                    docker image prune -f
 
-                        echo "Starting new container with image: ${imageTag}"
-                        docker run -d \\
-                            --name jenkins-demo-app \\
-                            -p 8001:8000 \\
-                            ${imageTag}
-
-                        echo "⏳ Waiting for application to start..."
-                        sleep 10
-
-                        echo "🔍 Checking if app is running..."
-                        docker ps | grep jenkins-demo-app
-
-                        echo "✅ Deployment completed!"
-                        echo "🌐 App available at: http://localhost:8001"
-                        echo "💚 Health check: http://localhost:8001/health"
-                        echo "📦 Image: ${imageTag}"
-                    """
+                                    echo "✅ (Sunucu B) Deployment tamamlandı!"
+                                    echo "🌐 Uygulama artık burada çalışıyor: http://${deployServerIp}:${appPort}"
+                                '
+                            """
+                        }
+                    }
                 }
             }
         }
-    }
+    } // stages bloğu kapanışı
 
+    // post bloğu değişmeden kalır
     post {
         always {
             junit testResults: 'test-results.xml', allowEmptyResults: true
