@@ -107,7 +107,7 @@ print(f'{line_rate * 100:.2f}')
                     echo '📤 Pushing Docker image to Docker Hub...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-                    
+
                     docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
                         sh """
                             docker push ${imageTag}
@@ -117,6 +117,38 @@ print(f'{line_rate * 100:.2f}')
                             echo "   - ${imageLatest}"
                         """
                     }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            agent any
+            steps {
+                script {
+                    echo '🚀 Deploying application...'
+                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+
+                    sh """
+                        echo "Stopping existing container if running..."
+                        docker stop jenkins-demo-app || true
+                        docker rm jenkins-demo-app || true
+
+                        echo "Starting new container..."
+                        docker run -d \\
+                            --name jenkins-demo-app \\
+                            -p 8000:8000 \\
+                            ${imageLatest}
+
+                        echo "⏳ Waiting for application to start..."
+                        sleep 10
+
+                        echo "🔍 Checking if app is running..."
+                        docker ps | grep jenkins-demo-app
+
+                        echo "✅ Deployment completed!"
+                        echo "🌐 App available at: http://localhost:8000"
+                        echo "💚 Health check: http://localhost:8000/health"
+                    """
                 }
             }
         }

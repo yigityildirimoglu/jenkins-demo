@@ -55,16 +55,24 @@ Minimum %50 coverage kontrolü yapar.
 ### 6️⃣ Build Docker Image
 Docker image'ı build eder ve tag'ler:
 ```bash
-docker build -t yourusername/jenkins-demo-api:BUILD_NUMBER .
-docker build -t yourusername/jenkins-demo-api:latest .
+docker build -t yigittq/jenkins-demo-api:BUILD_NUMBER .
+docker build -t yigittq/jenkins-demo-api:latest .
 ```
 
 ### 7️⃣ Push to Docker Hub
 Docker Hub'a otomatik push eder:
 ```bash
-docker push yourusername/jenkins-demo-api:BUILD_NUMBER
-docker push yourusername/jenkins-demo-api:latest
+docker push yigittq/jenkins-demo-api:BUILD_NUMBER
+docker push yigittq/jenkins-demo-api:latest
 ```
+
+### 8️⃣ Deploy
+Uygulamayı otomatik deploy eder:
+```bash
+docker run -d --name jenkins-demo-app -p 8000:8000 yigittq/jenkins-demo-api:latest
+```
+
+**Sonuç:** http://localhost:8000 adresinde çalışan uygulama! 🎉
 
 ## 🛠️ Kurulum
 
