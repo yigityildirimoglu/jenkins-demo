@@ -9,6 +9,7 @@ pipeline {
     environment {
         COVERAGE_THRESHOLD = '50'
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
+        DOCKER_TAG = "${BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
@@ -122,7 +123,7 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '🐳 Building Docker image...'
-                    def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
                     sh """
@@ -139,7 +140,7 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
-                    def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
                     docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
@@ -159,6 +160,7 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '🚀 Deploying application...'
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
                     sh """
@@ -170,7 +172,7 @@ print(f'{line_rate * 100:.2f}')
                         docker run -d \\
                             --name jenkins-demo-app \\
                             -p 8000:8000 \\
-                            ${imageLatest}
+                            ${imageTag}
 
                         echo "⏳ Waiting for application to start..."
                         sleep 10
@@ -181,6 +183,7 @@ print(f'{line_rate * 100:.2f}')
                         echo "✅ Deployment completed!"
                         echo "🌐 App available at: http://localhost:8000"
                         echo "💚 Health check: http://localhost:8000/health"
+                        echo "📦 Image: ${imageTag}"
                     """
                 }
             }
