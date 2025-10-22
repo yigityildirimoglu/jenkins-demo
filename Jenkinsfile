@@ -177,8 +177,7 @@ print(f'{line_rate * 100:.2f}')
                                     
                                     echo "🎯 [Sunucu B] Başarıyla bağlandım!"
                                     
-                                    echo "🔐 [Sunucu B] Docker Hub'a login oluyorum..."
-                                    # Güvenli değişken kullanımı için \ eklendi
+                                    echo "🔐 [Sunucu B] Docker Hub'a login oluyorum..."       
                                     echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
                                     
                                     echo "🐳 [Sunucu B] Yeni imajı Docker Hub'dan çekiyorum: ${imageTag}"
