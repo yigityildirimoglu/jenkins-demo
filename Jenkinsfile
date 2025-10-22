@@ -1,7 +1,7 @@
 pipeline {
     agent {
         docker {
-            image 'python:3.11-slim'
+            image 'docker:dind'
             args '-u root --privileged -v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
@@ -22,6 +22,12 @@ pipeline {
         }
 
         stage('Install Dependencies') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-u root'
+                }
+            }
             steps {
                 echo 'Installing Python dependencies...'
                 sh 'pip install --quiet --upgrade pip'
@@ -31,6 +37,12 @@ pipeline {
         }
 
         stage('Lint') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-u root'
+                }
+            }
             steps {
                 echo 'Running code quality checks...'
                 sh 'flake8 app/ tests/ --config=.flake8 || true'
@@ -39,6 +51,12 @@ pipeline {
         }
 
         stage('Unit Tests') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-u root'
+                }
+            }
             steps {
                 echo 'Running unit tests with coverage...'
                 sh '''
@@ -55,11 +73,17 @@ pipeline {
         }
 
         stage('Coverage Check') {
+            agent {
+                docker {
+                    image 'python:3.11-slim'
+                    args '-u root'
+                }
+            }
             steps {
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
                 sh '''
                     apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
-                    
+
                     coverage_percentage=$(python -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
@@ -67,10 +91,10 @@ root = tree.getroot()
 line_rate = float(root.attrib['line-rate'])
 print(f'{line_rate * 100:.2f}')
 ")
-                    
+
                     echo "Current coverage: ${coverage_percentage}%"
                     echo "Required coverage: ${COVERAGE_THRESHOLD}%"
-                    
+
                     result=$(echo "$coverage_percentage >= ${COVERAGE_THRESHOLD}" | bc -l)
                     if [ "$result" -eq 1 ]; then
                         echo "✅ Coverage check passed!"
