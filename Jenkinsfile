@@ -24,7 +24,7 @@ pipeline {
         stage('Install Dependencies') {
             agent {
                 docker {
-                    image 'python:3.11-slim'
+                    image 'python:3.11'
                     args '-u root'
                 }
             }
@@ -39,7 +39,7 @@ pipeline {
         stage('Lint') {
             agent {
                 docker {
-                    image 'python:3.11-slim'
+                    image 'python:3.11'
                     args '-u root'
                 }
             }
@@ -57,7 +57,7 @@ pipeline {
         stage('Unit Tests') {
             agent {
                 docker {
-                    image 'python:3.11-slim'
+                    image 'python:3.11'
                     args '-u root'
                 }
             }
@@ -83,7 +83,7 @@ pipeline {
         stage('Coverage Check') {
             agent {
                 docker {
-                    image 'python:3.11-slim'
+                    image 'python:3.11'
                     args '-u root'
                 }
             }
