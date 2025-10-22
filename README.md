@@ -24,6 +24,8 @@ Modern ve temiz bir Jenkins pipeline demo projesi. 7 aşamalı CI/CD pipeline il
 
 ## 🎯 Pipeline Aşamaları
 
+### CI (Continuous Integration) Aşamaları:
+
 ### 1️⃣ Checkout
 Git repository'den kodu çeker.
 
@@ -48,14 +50,21 @@ pytest tests/ --cov=app
 ### 5️⃣ Coverage Check
 Minimum %50 coverage kontrolü yapar.
 
+### CD (Continuous Deployment) Aşamaları:
+
 ### 6️⃣ Build Docker Image
-Docker image'ı build eder:
+Docker image'ı build eder ve tag'ler:
 ```bash
-docker build -t jenkins-demo-api .
+docker build -t yourusername/jenkins-demo-api:BUILD_NUMBER .
+docker build -t yourusername/jenkins-demo-api:latest .
 ```
 
 ### 7️⃣ Push to Docker Hub
-Docker Hub'a push eder (opsiyonel).
+Docker Hub'a otomatik push eder:
+```bash
+docker push yourusername/jenkins-demo-api:BUILD_NUMBER
+docker push yourusername/jenkins-demo-api:latest
+```
 
 ## 🛠️ Kurulum
 
@@ -216,14 +225,17 @@ Jenkins'e giriş yap (http://localhost:8080) ve şu eklentileri yükle:
 
 **Dashboard → Manage Jenkins → Plugins → Available plugins**
 
-### 3. Docker Hub Credentials Ekle
+### 3. Docker Hub Credentials Ekle (CD için gerekli!)
 
 **Dashboard → Manage Jenkins → Credentials → System → Global credentials**
 
 - **Kind:** Username with password
 - **Username:** Docker Hub kullanıcı adınız
-- **Password:** Docker Hub token/şifreniz
+- **Password:** Docker Hub Access Token (şifre değil!)
 - **ID:** `dockerhub-credentials`
+- **Description:** Docker Hub Credentials
+
+⚠️ **Önemli:** Güvenlik için Docker Hub şifrenizi değil, Access Token kullanın!
 
 ### 4. Email Konfigürasyonu (Opsiyonel)
 
@@ -252,10 +264,14 @@ Jenkins'e giriş yap (http://localhost:8080) ve şu eklentileri yükle:
 
 ```groovy
 environment {
-    DOCKER_IMAGE_NAME = 'yourusername/jenkins-demo-api'  // Docker Hub username'inizi girin
-    NOTIFICATION_EMAIL = 'your-email@example.com'         // Email adresinizi girin
+    COVERAGE_THRESHOLD = '50'
+    DOCKER_IMAGE_NAME = 'yourusername/jenkins-demo-api'  // ⚠️ Docker Hub username'inizi girin!
+    DOCKER_REGISTRY = 'docker.io'
+    DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'       // Jenkins'teki credential ID
 }
 ```
+
+**Önemli:** `DOCKER_IMAGE_NAME` değişkenini kendi Docker Hub kullanıcı adınızla güncelleyin!
 
 ### 7. Pipeline'ı Çalıştır
 

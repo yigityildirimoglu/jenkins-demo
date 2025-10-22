@@ -8,6 +8,9 @@ pipeline {
 
     environment {
         COVERAGE_THRESHOLD = '50'
+        DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -76,6 +79,45 @@ print(f'{line_rate * 100:.2f}')
                         exit 1
                     fi
                 '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            agent any
+            steps {
+                script {
+                    echo '🐳 Building Docker image...'
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
+                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+                    
+                    sh """
+                        docker build -t ${imageTag} -t ${imageLatest} .
+                        echo "✅ Docker image built successfully!"
+                        echo "   - ${imageTag}"
+                        echo "   - ${imageLatest}"
+                    """
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            agent any
+            steps {
+                script {
+                    echo '📤 Pushing Docker image to Docker Hub...'
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
+                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+                    
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
+                        sh """
+                            docker push ${imageTag}
+                            docker push ${imageLatest}
+                            echo "✅ Docker images pushed successfully!"
+                            echo "   - ${imageTag}"
+                            echo "   - ${imageLatest}"
+                        """
+                    }
+                }
             }
         }
     }
