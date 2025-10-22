@@ -11,7 +11,6 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
-        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -144,15 +143,17 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
-                    echo "🔐 Using credentials: ${DOCKER_CREDENTIALS_ID}"
                     echo "📦 Repository: ${DOCKER_IMAGE_NAME}"
                     echo "🏷️  Tag: ${DOCKER_TAG}"
 
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
-                    docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
+                            echo "🔐 Logging in to Docker Hub..."
+                            echo "${DOCKER_PASS}" | docker login -u ${DOCKER_USER} --password-stdin
+
                             echo "📤 Pushing ${imageTag}..."
                             docker push ${imageTag}
                             echo "📤 Pushing ${imageLatest}..."
