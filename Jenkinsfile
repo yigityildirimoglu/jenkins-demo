@@ -83,13 +83,18 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Build Docker Image') {
-            agent any
+            agent {
+                docker {
+                    image 'docker:dind'
+                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
             steps {
                 script {
                     echo '🐳 Building Docker image...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-                    
+
                     sh """
                         docker build -t ${imageTag} -t ${imageLatest} .
                         echo "✅ Docker image built successfully!"
@@ -101,7 +106,12 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Push to Docker Hub') {
-            agent any
+            agent {
+                docker {
+                    image 'docker:dind'
+                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
@@ -122,7 +132,12 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Deploy') {
-            agent any
+            agent {
+                docker {
+                    image 'docker:dind'
+                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
             steps {
                 script {
                     echo '🚀 Deploying application...'

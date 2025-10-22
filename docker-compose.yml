@@ -18,6 +18,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker
     environment:
       - JENKINS_OPTS=--httpPort=8080
+    privileged: true  # Docker komutları için gerekli
     networks:
       - jenkins-network
     healthcheck:
