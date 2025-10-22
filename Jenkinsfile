@@ -144,12 +144,18 @@ print(f'{line_rate * 100:.2f}')
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
+                    echo "🔐 Using credentials: ${DOCKER_CREDENTIALS_ID}"
+                    echo "📦 Repository: ${DOCKER_IMAGE_NAME}"
+                    echo "🏷️  Tag: ${DOCKER_TAG}"
+
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
 
                     docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
                         sh """
+                            echo "📤 Pushing ${imageTag}..."
                             docker push ${imageTag}
+                            echo "📤 Pushing ${imageLatest}..."
                             docker push ${imageLatest}
                             echo "✅ Docker images pushed successfully!"
                             echo "   - ${imageTag}"
