@@ -2,14 +2,25 @@ FROM jenkins/jenkins:lts
 
 USER root
 
-# Docker CLI kurulumu
+# Docker CLI ve daemon kurulumu
 RUN curl -fsSL https://get.docker.com -o get-docker.sh && \
     sh get-docker.sh && \
     rm get-docker.sh && \
     docker --version
 
+# Docker daemon konfigürasyonu
+RUN mkdir -p /etc/docker && \
+    echo '{"iptables": false, "default-address-pools": [{"base": "172.16.0.0/16", "size": 24}]}' > /etc/docker/daemon.json
+
 # Jenkins kullanıcısını docker grubuna ekle
 RUN usermod -aG docker jenkins
+
+# Docker daemon'ı başlatmak için script
+COPY start-docker.sh /usr/local/bin/start-docker.sh
+RUN chmod +x /usr/local/bin/start-docker.sh
+
+# Jenkins'i başlatırken Docker daemon'ı da başlat
+ENTRYPOINT ["/usr/local/bin/start-docker.sh"]
 
 USER jenkins
 

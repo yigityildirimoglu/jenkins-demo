@@ -83,12 +83,6 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Build Docker Image') {
-            agent {
-                docker {
-                    image 'docker:dind'
-                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
             steps {
                 script {
                     echo '🐳 Building Docker image...'
@@ -106,12 +100,6 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Push to Docker Hub') {
-            agent {
-                docker {
-                    image 'docker:dind'
-                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
@@ -132,12 +120,6 @@ print(f'{line_rate * 100:.2f}')
         }
 
         stage('Deploy') {
-            agent {
-                docker {
-                    image 'docker:dind'
-                    args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
             steps {
                 script {
                     echo '🚀 Deploying application...'
