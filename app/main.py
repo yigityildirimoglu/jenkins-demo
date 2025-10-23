@@ -148,7 +148,7 @@ def calculate_discount(price: float, discount_percent: float) -> float:
 async def test_internal_error():
     """Bu endpoint KASTEN 500 hatası verir (Alarm testi için)."""
     logger.error("!!! Triggering intentional 500 error for alarm test !!!")
-    result = 1 / 0  
+    result = 1 / 0
     return {"message": result}
 
 
