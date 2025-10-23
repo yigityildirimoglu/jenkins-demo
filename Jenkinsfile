@@ -8,11 +8,11 @@ pipeline {
         DOCKER_REGISTRY = 'docker.io'
 
         // --- AWS Configuration ---
-        AWS_REGION = 'us-east-1' // AWS Bölge
-        ALB_LISTENER_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener/app/myy-app-alb/37b5761ecd032b70/06ce330922577902' // Listener ARN
-        ALB_RULE_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/c3e97d00a1489e68' // Rule ARN
-        BLUE_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a' // Blue Target Group ARN
-        GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN
+        AWS_REGION = 'us-east-1' // AWS Bölgeniz
+        ALB_LISTENER_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener/app/myy-app-alb/37b5761ecd032b70/06ce330922577902' // Listener ARN'niz
+        ALB_RULE_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/c3e97d00a1489e68' // Rule ARN'niz
+        BLUE_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a' // Blue Target Group ARN'niz
+        GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN'niz
 
         // --- Server IPs ---
         BLUE_SERVER_IP = '54.87.26.234'  // Sunucu B (Blue) Public IP Adresi
@@ -20,7 +20,7 @@ pipeline {
     }
 
     stages {
-      
+        // --- CI Stages (Değişiklik Yok) ---
         stage('Checkout') {
              steps {
                 echo 'Checking out code from Git...'
@@ -119,100 +119,102 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // --- YENİ CD Aşaması: Blue/Green Deployment ---
+        
         stage('Deploy Blue/Green') {
-            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
-                script {
-                    // 1. Canlı vs Boşta ortamı belirle
-                    echo "Determining current LIVE environment by querying ALB Rule..."
-                    def liveTargetGroupArn = sh(
-                        script: """
-                            aws elbv2 describe-rules --rule-arn ${env.ALB_RULE_ARN} \\
-                                --query 'Rules[0].Actions[0].TargetGroupArn' --output text --region ${env.AWS_REGION}
-                        """,
-                        returnStdout: true
-                    ).trim()
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
+                    script {
+                        // 1. Canlı vs Boşta ortamı belirle
+                        echo "Determining current LIVE environment by querying ALB Rule..."
+                        def liveTargetGroupArn = sh(
+                            script: """
+                                aws elbv2 describe-rules --rule-arn ${env.ALB_RULE_ARN} \\
+                                    --query 'Rules[0].Actions[0].TargetGroupArn' --output text --region ${env.AWS_REGION}
+                            """,
+                            returnStdout: true
+                        ).trim()
 
-                    def deployTargetGroupArn
-                    def deployServerIp
-                    def deployTgFriendlyName
-                    def liveServerIp
+                        def deployTargetGroupArn
+                        def deployServerIp
+                        def deployTgFriendlyName
+                        def liveServerIp
 
-                    if (liveTargetGroupArn == env.BLUE_TG_ARN) {
-                        echo "Blue environment (${env.BLUE_SERVER_IP}) is LIVE. Deploying to GREEN."
-                        deployTargetGroupArn = env.GREEN_TG_ARN
-                        deployServerIp = env.GREEN_SERVER_IP
-                        deployTgFriendlyName = "GREEN"
-                        liveServerIp = env.BLUE_SERVER_IP
-                    } else if (liveTargetGroupArn == env.GREEN_TG_ARN) {
-                        echo "Green environment (${env.GREEN_SERVER_IP}) is LIVE. Deploying to BLUE."
-                        deployTargetGroupArn = env.BLUE_TG_ARN
-                        deployServerIp = env.BLUE_SERVER_IP
-                        deployTgFriendlyName = "BLUE"
-                        liveServerIp = env.GREEN_SERVER_IP
-                    } else {
-                        error "ALB Rule is pointing to an unknown Target Group ARN: ${liveTargetGroupArn}"
-                    }
-
-                    // 2. Boştaki sunucuya deploy et
-                    echo "Deploying image ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG} to IDLE [${deployTgFriendlyName}] server: ${deployServerIp}"
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sshagent(credentials: ['deploy-server-ssh-key']) {
-                            sh """
-                                ssh -o StrictHostKeyChecking=no ec2-user@${deployServerIp} '
-                                    echo "🎯 [${deployServerIp}] Connected!"
-                                    echo "🔐 [${deployServerIp}] Logging in to Docker Hub..."
-                                    echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
-
-                                    echo "🐳 [${deployServerIp}] Pulling image: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
-                                    docker pull ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
-
-                                    echo "🛑 [${deployServerIp}] Stopping old container..."
-                                    docker stop jenkins-demo-app || true
-                                    docker rm jenkins-demo-app || true
-
-                                    echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
-                                    docker run -d --name jenkins-demo-app -p 8001:8000 ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
-
-                                    echo "🧹 [${deployServerIp}] Pruning old images..."
-                                    docker image prune -f
-
-                                    echo "✅ [${deployServerIp}] Deployment script finished."
-                                '
-                            """
+                        if (liveTargetGroupArn == env.BLUE_TG_ARN) {
+                            echo "Blue environment (${env.BLUE_SERVER_IP}) is LIVE. Deploying to GREEN."
+                            deployTargetGroupArn = env.GREEN_TG_ARN
+                            deployServerIp = env.GREEN_SERVER_IP
+                            deployTgFriendlyName = "GREEN"
+                            liveServerIp = env.BLUE_SERVER_IP
+                        } else if (liveTargetGroupArn == env.GREEN_TG_ARN) {
+                            echo "Green environment (${env.GREEN_SERVER_IP}) is LIVE. Deploying to BLUE."
+                            deployTargetGroupArn = env.BLUE_TG_ARN
+                            deployServerIp = env.BLUE_SERVER_IP
+                            deployTgFriendlyName = "BLUE"
+                            liveServerIp = env.GREEN_SERVER_IP
+                        } else {
+                            error "ALB Rule is pointing to an unknown Target Group ARN: ${liveTargetGroupArn}"
                         }
-                    }
 
-                    // 3. Boştaki sunucuda sağlık kontrolü
-                    echo "Waiting for application to start on [${deployTgFriendlyName}] server (${deployServerIp}) before health check..."
-                    sleep(15) // Konteynerin başlaması için bekle
+                        // 2. Boştaki sunucuya deploy et
+                        echo "Deploying image ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG} to IDLE [${deployTgFriendlyName}] server: ${deployServerIp}"
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sshagent(credentials: ['deploy-server-ssh-key']) {
+                                sh """
+                                    ssh -o StrictHostKeyChecking=no ec2-user@${deployServerIp} '
+                                        echo "🎯 [${deployServerIp}] Connected!"
+                                        echo "🔐 [${deployServerIp}] Logging in to Docker Hub..."
+                                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
 
-                    echo "Performing health check on [${deployTgFriendlyName}] server: http://${deployServerIp}:8001/health"
-                    try {
-                        sh "curl -fsS http://${deployServerIp}:8001/health"
-                        echo "✅ [${deployTgFriendlyName}] Health check PASSED."
-                    } catch (ex) {
-                        echo "❌ [${deployTgFriendlyName}] Health check FAILED! See details below:"
-                        echo ex.getMessage()
-                        error "Deployment failed health check. Traffic switch aborted."
-                    }
+                                        echo "🐳 [${deployServerIp}] Pulling image: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
+                                        docker pull ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
 
-                    // 4. Trafiği ALB üzerinden çevir
-                    echo "Health check passed. Flipping ALB traffic to target group [${deployTgFriendlyName}] (${deployTargetGroupArn})..."
-                    sh """
-                        aws elbv2 modify-rule --rule-arn ${env.ALB_RULE_ARN} \\
-                            --actions Type=forward,TargetGroupArn=${deployTargetGroupArn} \\
-                            --region ${env.AWS_REGION}
-                    """
+                                        echo "🛑 [${deployServerIp}] Stopping old container..."
+                                        docker stop jenkins-demo-app || true
+                                        docker rm jenkins-demo-app || true
 
-                    echo "✅ SUCCESS! Traffic is now flowing to [${deployTgFriendlyName}]."
-                    echo "Old environment (Server IP: ${liveServerIp}) is now idle."
-                }
-            } // withCredentials [AWS] kapanışı
+                                        echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
+                                        docker run -d --name jenkins-demo-app -p 8001:8000 ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+
+                                        echo "🧹 [${deployServerIp}] Pruning old images..."
+                                        docker image prune -f
+
+                                        echo "✅ [${deployServerIp}] Deployment script finished."
+                                    '
+                                """
+                            }
+                        }
+
+                        // 3. Boştaki sunucuda sağlık kontrolü
+                        echo "Waiting for application to start on [${deployTgFriendlyName}] server (${deployServerIp}) before health check..."
+                        sleep(15) // Konteynerin başlaması için bekle
+
+                        echo "Performing health check on [${deployTgFriendlyName}] server: http://${deployServerIp}:8001/health"
+                        try {
+                            sh "curl -fsS http://${deployServerIp}:8001/health"
+                            echo "✅ [${deployTgFriendlyName}] Health check PASSED."
+                        } catch (ex) {
+                            echo "❌ [${deployTgFriendlyName}] Health check FAILED! See details below:"
+                            echo ex.getMessage()
+                            error "Deployment failed health check. Traffic switch aborted."
+                        }
+
+                        // 4. Trafiği ALB üzerinden çevir
+                        echo "Health check passed. Flipping ALB traffic to target group [${deployTgFriendlyName}] (${deployTargetGroupArn})..."
+                        sh """
+                            aws elbv2 modify-rule --rule-arn ${env.ALB_RULE_ARN} \\
+                                --actions Type=forward,TargetGroupArn=${deployTargetGroupArn} \\
+                                --region ${env.AWS_REGION}
+                        """
+
+                        echo "✅ SUCCESS! Traffic is now flowing to [${deployTgFriendlyName}]."
+                        echo "Old environment (Server IP: ${liveServerIp}) is now idle."
+                    } // script kapanışı
+                } // withCredentials [AWS] kapanışı
+            } // steps kapanışı
         } // stage Deploy Blue/Green kapanışı
     } // stages bloğu kapanışı
 
-    
+  
     post {
         always {
              junit testResults: 'test-results.xml', allowEmptyResults: true
