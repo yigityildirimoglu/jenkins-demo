@@ -149,7 +149,7 @@ async def test_internal_error():
     """Bu endpoint KASTEN 500 hatası verir (Alarm testi için)."""
     logger.error("!!! Triggering intentional 500 error for alarm test !!!")
     result = 1 / 0  
-    return {"message": "Bu mesaj asla dönmeyecek"}
+    return {"message": result}
 
 
 if __name__ == "__main__":
