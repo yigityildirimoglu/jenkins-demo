@@ -81,7 +81,8 @@ async def get_items():
 @app.get("/items/{item_id}", response_model=Item)
 async def get_item(item_id: int):
     """Get a specific item by ID"""
-    logger.info(f"Attempting to retrieve item with ID: {item_id} from '/items/{{item_id}}' endpoint.")
+    logger.info(f"Attempting to retrieve item with ID: {item_id} "
+                f"from '/items/{{item_id}}' endpoint.")
     for item in items_db:
         if item.id == item_id:
             logger.info(f"Item with ID {item_id} found: {item}")
@@ -137,7 +138,9 @@ def calculate_discount(price: float, discount_percent: float) -> float:
         logger.warning(f"Invalid discount percentage provided: {discount_percent}")
         raise ValueError("Discount must be between 0 and 100")
     discounted_price = price * (1 - discount_percent / 100)
-    logger.debug(f"Calculated discount: Original={price}, Percent={discount_percent}, Discounted={discounted_price}") # DEBUG seviyesi loglar varsayılan olarak görünmez
+    logger.debug(f"Calculated discount: Original={price}, "
+                 f"Percent={discount_percent}, Discounted={discounted_price}")
+    # DEBUG seviyesi loglar varsayılan olarak görünmez
     return discounted_price
 
 
