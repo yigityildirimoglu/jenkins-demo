@@ -144,6 +144,14 @@ def calculate_discount(price: float, discount_percent: float) -> float:
     return discounted_price
 
 
+@app.get("/test-500")
+async def test_internal_error():
+    """Bu endpoint KASTEN 500 hatası verir (Alarm testi için)."""
+    logger.error("!!! Triggering intentional 500 error for alarm test !!!")
+    result = 1 / 0  
+    return {"message": "Bu mesaj asla dönmeyecek"}
+
+
 if __name__ == "__main__":
     # Uygulama başlatıldığında bir log yazdır.
     logger.info("Starting Jenkins Demo API...")
