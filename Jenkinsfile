@@ -1,5 +1,4 @@
 pipeline {
-    // EC2 kurulumumuz için 'agent any' olarak değiştirildi.
     agent any
 
     environment {
@@ -7,93 +6,68 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api' // Docker Hub kullanıcı adınız/repo adınız
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
+
+        // --- AWS Configuration ---
+        AWS_REGION = 'us-east-1' // AWS Bölge
+        ALB_LISTENER_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener/app/myy-app-alb/37b5761ecd032b70/06ce330922577902' // Listener ARN
+        ALB_RULE_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/c3e97d00a1489e68' // Rule ARN
+        BLUE_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a' // Blue Target Group ARN
+        GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN
+
+        // --- Server IPs ---
+        BLUE_SERVER_IP = '54.87.26.234'  // Sunucu B (Blue) Public IP Adresi
+        GREEN_SERVER_IP = '18.209.12.9' // Sunucu C (Green) Public IP Adresi
     }
 
     stages {
+      
         stage('Checkout') {
-            steps {
+             steps {
                 echo 'Checking out code from Git...'
                 checkout scm
             }
         }
-
         stage('Install Dependencies') {
-            agent {
-                docker {
-                    image 'python:3.11'
-                    args '-u root'
-                }
-            }
+            agent { docker { image 'python:3.11'; args '-u root' } }
             steps {
                 echo 'Installing Python dependencies...'
                 sh 'pip install --quiet --upgrade pip'
                 sh 'pip install --quiet -r requirements.txt'
-                sh 'echo "Dependencies installed successfully"'
             }
         }
-
         stage('Lint') {
-            agent {
-                docker {
-                    image 'python:3.11'
-                    args '-u root'
-                }
-            }
+            agent { docker { image 'python:3.11'; args '-u root' } }
             steps {
                 echo 'Installing Python dependencies...'
                 sh 'pip install --quiet --upgrade pip'
                 sh 'pip install --quiet -r requirements.txt'
-
                 echo 'Running code quality checks...'
-                // DÜZELTME: '|| true' kaldırıldı. Lint hatası artık build'i durduracak.
-                sh 'flake8 app/ tests/ --config=.flake8'
-                sh 'echo "Linting completed"'
+                sh 'flake8 app/ tests/ --config=.flake8' // Lint hataları build'i durduracak
             }
         }
-
         stage('Unit Tests') {
-            agent {
-                docker {
-                    image 'python:3.11'
-                    args '-u root'
-                }
-            }
+            agent { docker { image 'python:3.11'; args '-u root' } }
             steps {
                 echo 'Installing Python dependencies...'
                 sh 'pip install --quiet --upgrade pip'
                 sh 'pip install --quiet -r requirements.txt'
-
                 echo 'Running unit tests with coverage...'
                 sh '''
-                    pytest tests/ \
-                        --verbose \
-                        --cov=app \
-                        --cov-report=html:htmlcov \
-                        --cov-report=xml:coverage.xml \
-                        --cov-report=term-missing \
+                    pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
+                        --cov-report=xml:coverage.xml --cov-report=term-missing \
                         --junitxml=test-results.xml
                 '''
-                sh 'echo "Tests completed"'
             }
         }
-
         stage('Coverage Check') {
-            agent {
-                docker {
-                    image 'python:3.11'
-                    args '-u root'
-                }
-            }
+            agent { docker { image 'python:3.11'; args '-u root' } }
             steps {
                 echo 'Installing Python dependencies...'
                 sh 'pip install --quiet --upgrade pip'
                 sh 'pip install --quiet -r requirements.txt'
-
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
                 sh '''
-                    # Python imajında 'bc' yüklü gelmez, kuruyoruz.
                     apt-get update -qq && apt-get install -y -qq bc > /dev/null 2>&1
-
                     coverage_percentage=$(python -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
@@ -101,10 +75,8 @@ root = tree.getroot()
 line_rate = float(root.attrib['line-rate'])
 print(f'{line_rate * 100:.2f}')
 ")
-
                     echo "Current coverage: ${coverage_percentage}%"
                     echo "Required coverage: ${COVERAGE_THRESHOLD}%"
-
                     result=$(echo "$coverage_percentage >= ${COVERAGE_THRESHOLD}" | bc -l)
                     if [ "$result" -eq 1 ]; then
                         echo "✅ Coverage check passed!"
@@ -115,36 +87,27 @@ print(f'{line_rate * 100:.2f}')
                 '''
             }
         }
-
         stage('Build Docker Image') {
             steps {
                 script {
                     echo '🐳 Building Docker image...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-
-                    sh """
-                        docker build -t ${imageTag} -t ${imageLatest} .
-                        echo "✅ Docker image built successfully!"
-                        echo "   - ${imageTag}"
-                        echo "   - ${imageLatest}"
-                    """
+                    sh "docker build -t ${imageTag} -t ${imageLatest} ."
+                    echo "✅ Docker image built: ${imageTag}, ${imageLatest}"
                 }
             }
         }
-
         stage('Push to Docker Hub') {
             steps {
                 script {
                     echo '📤 Pushing Docker image to Docker Hub...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
                             echo "🔐 Logging in to Docker Hub..."
                             echo "${DOCKER_PASS}" | docker login -u ${DOCKER_USER} --password-stdin
-
                             echo "📤 Pushing ${imageTag}..."
                             docker push ${imageTag}
                             echo "📤 Pushing ${imageLatest}..."
@@ -156,68 +119,107 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // DÜZELTİLMİŞ DEPLOY AŞAMASI (Hatalı yorum satırı kaldırıldı)
-        stage('Deploy to Production EC2') {
-            steps {
+        // --- YENİ CD Aşaması: Blue/Green Deployment ---
+        stage('Deploy Blue/Green') {
+            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
                 script {
-                    echo '🚀 Deploying application to Production EC2 (Sunucu B)...'
-                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
-                    def deployServerUser = 'ec2-user' // Sunucu B'nin kullanıcı adı
-                    
-                    // !!! DEĞİŞTİR !!! Buraya Sunucu B'nin (Deploy Sunucusu) Public IP adresini yazın
-                    def deployServerIp = '54.87.26.234' 
-                    
-                    def appPort = '8001' // Sunucu B'nin Security Group'unda açtığımız port
+                    // 1. Canlı vs Boşta ortamı belirle
+                    echo "Determining current LIVE environment by querying ALB Rule..."
+                    def liveTargetGroupArn = sh(
+                        script: """
+                            aws elbv2 describe-rules --rule-arn ${env.ALB_RULE_ARN} \\
+                                --query 'Rules[0].Actions[0].TargetGroupArn' --output text --region ${env.AWS_REGION}
+                        """,
+                        returnStdout: true
+                    ).trim()
 
+                    def deployTargetGroupArn
+                    def deployServerIp
+                    def deployTgFriendlyName
+                    def liveServerIp
+
+                    if (liveTargetGroupArn == env.BLUE_TG_ARN) {
+                        echo "Blue environment (${env.BLUE_SERVER_IP}) is LIVE. Deploying to GREEN."
+                        deployTargetGroupArn = env.GREEN_TG_ARN
+                        deployServerIp = env.GREEN_SERVER_IP
+                        deployTgFriendlyName = "GREEN"
+                        liveServerIp = env.BLUE_SERVER_IP
+                    } else if (liveTargetGroupArn == env.GREEN_TG_ARN) {
+                        echo "Green environment (${env.GREEN_SERVER_IP}) is LIVE. Deploying to BLUE."
+                        deployTargetGroupArn = env.BLUE_TG_ARN
+                        deployServerIp = env.BLUE_SERVER_IP
+                        deployTgFriendlyName = "BLUE"
+                        liveServerIp = env.GREEN_SERVER_IP
+                    } else {
+                        error "ALB Rule is pointing to an unknown Target Group ARN: ${liveTargetGroupArn}"
+                    }
+
+                    // 2. Boştaki sunucuya deploy et
+                    echo "Deploying image ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG} to IDLE [${deployTgFriendlyName}] server: ${deployServerIp}"
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sshagent(credentials: ['deploy-server-ssh-key']) {
-                            
                             sh """
-                                ssh -o StrictHostKeyChecking=no ${deployServerUser}@${deployServerIp} '
-                                    
-                                    echo "🎯 [Sunucu B] Başarıyla bağlandım!"
-                                    
-                                    echo "🔐 [Sunucu B] Docker Hub'a login oluyorum..."       
+                                ssh -o StrictHostKeyChecking=no ec2-user@${deployServerIp} '
+                                    echo "🎯 [${deployServerIp}] Connected!"
+                                    echo "🔐 [${deployServerIp}] Logging in to Docker Hub..."
                                     echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
-                                    
-                                    echo "🐳 [Sunucu B] Yeni imajı Docker Hub'dan çekiyorum: ${imageTag}"
-                                    docker pull ${imageTag}
-                                    
-                                    echo "🛑 [Sunucu B] Eski konteyneri durduruyorum..."
+
+                                    echo "🐳 [${deployServerIp}] Pulling image: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
+                                    docker pull ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+
+                                    echo "🛑 [${deployServerIp}] Stopping old container..."
                                     docker stop jenkins-demo-app || true
                                     docker rm jenkins-demo-app || true
-                                    
-                                    echo "🚀 [Sunucu B] Yeni konteyneri başlatıyorum..."
-                                    docker run -d \\
-                                        --name jenkins-demo-app \\
-                                        -p ${appPort}:8000 \\
-                                        ${imageTag}
-                                    
-                                    echo "🧹 [Sunucu B] Eski Docker imajlarını temizliyorum..."
+
+                                    echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
+                                    docker run -d --name jenkins-demo-app -p 8001:8000 ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+
+                                    echo "🧹 [${deployServerIp}] Pruning old images..."
                                     docker image prune -f
 
-                                    echo "✅ [Sunucu B] Deployment tamamlandı!"
-                                    echo "🌐 Uygulama artık burada çalışıyor: http://${deployServerIp}:${appPort}"
+                                    echo "✅ [${deployServerIp}] Deployment script finished."
                                 '
                             """
                         }
                     }
+
+                    // 3. Boştaki sunucuda sağlık kontrolü
+                    echo "Waiting for application to start on [${deployTgFriendlyName}] server (${deployServerIp}) before health check..."
+                    sleep(15) // Konteynerin başlaması için bekle
+
+                    echo "Performing health check on [${deployTgFriendlyName}] server: http://${deployServerIp}:8001/health"
+                    try {
+                        sh "curl -fsS http://${deployServerIp}:8001/health"
+                        echo "✅ [${deployTgFriendlyName}] Health check PASSED."
+                    } catch (ex) {
+                        echo "❌ [${deployTgFriendlyName}] Health check FAILED! See details below:"
+                        echo ex.getMessage()
+                        error "Deployment failed health check. Traffic switch aborted."
+                    }
+
+                    // 4. Trafiği ALB üzerinden çevir
+                    echo "Health check passed. Flipping ALB traffic to target group [${deployTgFriendlyName}] (${deployTargetGroupArn})..."
+                    sh """
+                        aws elbv2 modify-rule --rule-arn ${env.ALB_RULE_ARN} \\
+                            --actions Type=forward,TargetGroupArn=${deployTargetGroupArn} \\
+                            --region ${env.AWS_REGION}
+                    """
+
+                    echo "✅ SUCCESS! Traffic is now flowing to [${deployTgFriendlyName}]."
+                    echo "Old environment (Server IP: ${liveServerIp}) is now idle."
                 }
-            }
-        }
+            } // withCredentials [AWS] kapanışı
+        } // stage Deploy Blue/Green kapanışı
     } // stages bloğu kapanışı
 
+    
     post {
         always {
-            junit testResults: 'test-results.xml', allowEmptyResults: true
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'htmlcov',
-                reportFiles: 'index.html',
-                reportName: 'Coverage Report'
-            ])
+             junit testResults: 'test-results.xml', allowEmptyResults: true
+             publishHTML(
+                allowMissing: true, alwaysLinkToLastBuild: true, keepAll: true,
+                reportDir: 'htmlcov', reportFiles: 'index.html', reportName: 'Coverage Report'
+             )
         }
         success {
             echo '✅ Pipeline completed successfully!'
