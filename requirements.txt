@@ -13,3 +13,6 @@ flake8==7.0.0
 
 # Development
 python-dotenv==1.0.0
+
+
+starlette>=0.47.2
