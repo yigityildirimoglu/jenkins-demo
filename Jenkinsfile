@@ -16,8 +16,8 @@ pipeline {
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1'
 
         // --- Server IPs ---
-        BLUE_SERVER_IP = '54.87.26.234'
-        GREEN_SERVER_IP = '18.209.12.9'
+        BLUE_SERVER_IP = '98.94.89.99'
+        GREEN_SERVER_IP = '13.221.17.82'
     }
 
     stages {
