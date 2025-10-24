@@ -6,8 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
-        // *** DİKKAT: pyproject uyumlu YENİ agent imajınızın adını buraya yazın ***
-        PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:v1.0.0-uv' // Yeni build ettiğiniz agent imajı etiketi
+        PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:v1.0.0-uv' // Agent imajınız
 
         // --- AWS Configuration ---
         AWS_REGION = 'us-east-1'
@@ -15,6 +14,8 @@ pipeline {
         ALB_RULE_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/1afe0a8efa857a88'
         BLUE_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a'
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1'
+
+        // --- Server IPs ---
         BLUE_SERVER_IP = '54.87.26.234'
         GREEN_SERVER_IP = '18.209.12.9'
     }
@@ -31,7 +32,8 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing project dependencies using uv sync...'
-                sh 'uv sync --system'
+                // *** DÜZELTME: --system kaldırıldı ***
+                sh 'uv sync'
                 sh 'echo "Project dependencies installed."'
             }
         }
@@ -40,7 +42,8 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Checking for known vulnerabilities using pip-audit...'
-                sh 'uv sync --system' // Bağımlılıkları kur
+                // *** DÜZELTME: --system kaldırıldı ***
+                sh 'uv sync' // Bağımlılıkları kur
                 sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph' // pip açığını yok say
                 echo '✅ Vulnerability check passed.'
             }
@@ -59,7 +62,8 @@ pipeline {
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
                 echo 'Installing project dependencies (including dev) for tests using uv sync...'
-                sh 'uv sync --dev --system' // dev bağımlılıklarını da kur
+                // *** DÜZELTME: --system kaldırıldı ***
+                sh 'uv sync --dev' // dev bağımlılıklarını da kur
                 echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
@@ -94,23 +98,20 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
         stage('Build Docker Image') {
             steps {
-                script { -> // Groovy syntax düzeltmesi
+                script { ->
                     echo '🐳 Building Docker image...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-                    // Bu komut, checkout edilen koddaki ana Dockerfile'ı kullanır
                     sh "docker build -t ${imageTag} -t ${imageLatest} ."
                     echo "✅ Docker image built: ${imageTag}, ${imageLatest}"
                 }
             }
         }
-        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
         stage('Push to Docker Hub') {
             steps {
-                script { -> // Groovy syntax düzeltmesi
+                script { ->
                     echo '📤 Pushing Docker image to Docker Hub...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
@@ -128,11 +129,11 @@ print(f'{line_rate * 100:.2f}')
                 }
             }
         }
-        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
+
         stage('Deploy Blue/Green') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
-                    script { -> // Groovy syntax düzeltmesi
+                    script { ->
                         // 1. Canlı vs Boşta ortamı belirle
                         echo "Determining current LIVE environment by querying ALB Rule..."
                         def liveTargetGroupArn = sh(
