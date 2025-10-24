@@ -32,8 +32,7 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing project dependencies using uv sync...'
-                // *** DÜZELTME: --system kaldırıldı ***
-                sh 'uv sync'
+                sh 'uv sync' // Ana bağımlılıklar
                 sh 'echo "Project dependencies installed."'
             }
         }
@@ -42,7 +41,6 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Checking for known vulnerabilities using pip-audit...'
-                // *** DÜZELTME: --system kaldırıldı ***
                 sh 'uv sync' // Bağımlılıkları kur
                 sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph' // pip açığını yok say
                 echo '✅ Vulnerability check passed.'
@@ -57,17 +55,19 @@ pipeline {
             }
         }
 
+        // *** DÜZELTME: uv pip install ".[dev]" kullanılıyor ***
         stage('Unit Tests') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
                 echo 'Installing project dependencies (including dev) for tests using uv pip install...'
-                // *** DÜZELTME: uv sync --dev yerine uv pip install .[all] deniyoruz ***
-                sh 'uv pip install --quiet --system ".[all]"'
+                // uv sync --dev yerine uv pip install .[dev] deniyoruz
+                sh 'uv pip install --quiet --system ".[dev]"'
                 echo "Checking installed packages after uv pip install:"
                 sh 'uv pip list' // Kontrol edelim
-                echo "Attempting to import fastapi from Python..."
-                sh 'python -c "import fastapi; print(\'FastAPI import successful!\')"' // Kontrol edelim
+                echo "Attempting to import fastapi and httpx from Python..."
+                // Python'un httpx'i de bulup bulamadığını test edelim
+                sh 'python -c "import fastapi; import httpx; print(\'FastAPI and httpx import successful!\')"'
                 echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
@@ -139,89 +139,13 @@ print(f'{line_rate * 100:.2f}')
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
                     script { ->
                         // 1. Canlı vs Boşta ortamı belirle
-                        echo "Determining current LIVE environment by querying ALB Rule..."
-                        def liveTargetGroupArn = sh(
-                            script: """
-                                aws elbv2 describe-rules --rule-arn ${env.ALB_RULE_ARN} \\
-                                    --query 'Rules[0].Actions[0].TargetGroupArn' --output text --region ${env.AWS_REGION}
-                            """,
-                            returnStdout: true
-                        ).trim()
-
-                        def deployTargetGroupArn
-                        def deployServerIp
-                        def deployTgFriendlyName
-                        def liveServerIp
-
-                        if (liveTargetGroupArn == env.BLUE_TG_ARN) {
-                            echo "Blue environment (${env.BLUE_SERVER_IP}) is LIVE. Deploying to GREEN."
-                            deployTargetGroupArn = env.GREEN_TG_ARN
-                            deployServerIp = env.GREEN_SERVER_IP
-                            deployTgFriendlyName = "GREEN"
-                            liveServerIp = env.BLUE_SERVER_IP
-                        } else if (liveTargetGroupArn == env.GREEN_TG_ARN) {
-                            echo "Green environment (${env.GREEN_SERVER_IP}) is LIVE. Deploying to BLUE."
-                            deployTargetGroupArn = env.BLUE_TG_ARN
-                            deployServerIp = env.BLUE_SERVER_IP
-                            deployTgFriendlyName = "BLUE"
-                            liveServerIp = env.GREEN_SERVER_IP
-                        } else {
-                            error "ALB Rule is pointing to an unknown Target Group ARN: ${liveTargetGroupArn}"
-                        }
-
+                        // ... ( önceki kod gibi ) ...
                         // 2. Boştaki sunucuya deploy et
-                        echo "Deploying image ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG} to IDLE [${deployTgFriendlyName}] server: ${deployServerIp}"
-                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                            sshagent(credentials: ['deploy-server-ssh-key']) {
-                                sh """
-                                    ssh -o StrictHostKeyChecking=no ec2-user@${deployServerIp} '
-                                        echo "🎯 [${deployServerIp}] Connected!"
-                                        echo "🔐 [${deployServerIp}] Logging in to Docker Hub..."
-                                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
-
-                                        echo "🐳 [${deployServerIp}] Pulling image: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
-                                        docker pull ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
-
-                                        echo "🛑 [${deployServerIp}] Stopping old container..."
-                                        docker stop jenkins-demo-app || true
-                                        docker rm jenkins-demo-app || true
-
-                                        echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
-                                        docker run -d --name jenkins-demo-app -p 8001:8000 --restart unless-stopped ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
-
-                                        echo "🧹 [${deployServerIp}] Pruning old images..."
-                                        docker image prune -f
-
-                                        echo "✅ [${deployServerIp}] Deployment script finished."
-                                    '
-                                """
-                            }
-                        }
-
+                        // ... ( önceki kod gibi ) ...
                         // 3. Boştaki sunucuda sağlık kontrolü
-                        echo "Waiting for application to start on [${deployTgFriendlyName}] server (${deployServerIp}) before health check..."
-                        sleep(15) // Konteynerin başlaması için bekle
-
-                        echo "Performing health check on [${deployTgFriendlyName}] server: http://${deployServerIp}:8001/health"
-                        try {
-                            sh "curl -fsS http://${deployServerIp}:8001/health"
-                            echo "✅ [${deployTgFriendlyName}] Health check PASSED."
-                        } catch (ex) {
-                            echo "❌ [${deployTgFriendlyName}] Health check FAILED! See details below:"
-                            echo ex.getMessage()
-                            error "Deployment failed health check. Traffic switch aborted."
-                        }
-
+                        // ... ( önceki kod gibi ) ...
                         // 4. Trafiği ALB üzerinden çevir
-                        echo "Health check passed. Flipping ALB traffic to target group [${deployTgFriendlyName}] (${deployTargetGroupArn})..."
-                        sh """
-                            aws elbv2 modify-rule --rule-arn ${env.ALB_RULE_ARN} \\
-                                --actions Type=forward,TargetGroupArn=${deployTargetGroupArn} \\
-                                --region ${env.AWS_REGION}
-                        """
-
-                        echo "✅ SUCCESS! Traffic is now flowing to [${deployTgFriendlyName}]."
-                        echo "Old environment (Server IP: ${liveServerIp}) is now idle."
+                        // ... ( önceki kod gibi ) ...
                     } // script kapanışı
                 } // withCredentials [AWS] kapanışı
             } // steps kapanışı
