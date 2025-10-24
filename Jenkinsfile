@@ -40,14 +40,17 @@ pipeline {
             }
         }
 
+        // *** UV Audit Düzeltmesi ***
         stage('Vulnerability Check') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing uv if not present...' // Yedek
                 sh 'command -v uv || (curl -LsSf https://astral.sh/uv/install.sh | sh && mv $HOME/.cargo/bin/uv /usr/local/bin/)'
                 echo 'Checking for known vulnerabilities using uv...'
+                // Bağımlılıkları uv ile kur (audit için gerekli)
                 sh 'uv pip install --quiet --system -r requirements.txt'
-                sh 'uv pip audit'
+                // *** DÜZELTME: Doğru komut 'uv audit' ***
+                sh 'uv audit'
                 echo '✅ Vulnerability check passed.'
             }
         }
@@ -106,7 +109,7 @@ print(f'{line_rate * 100:.2f}')
 
         stage('Build Docker Image') {
             steps {
-                script {
+                script { -> // Groovy syntax düzeltmesi
                     echo '🐳 Building Docker image...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
@@ -117,7 +120,7 @@ print(f'{line_rate * 100:.2f}')
         }
         stage('Push to Docker Hub') {
             steps {
-                script {
+                script { -> // Groovy syntax düzeltmesi
                     echo '📤 Pushing Docker image to Docker Hub...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
@@ -139,8 +142,7 @@ print(f'{line_rate * 100:.2f}')
         stage('Deploy Blue/Green') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
-                    // *** DÜZELTME: script bloğunun başına '->' eklendi ***
-                    script { ->
+                    script { -> // Groovy syntax düzeltmesi
                         // 1. Canlı vs Boşta ortamı belirle
                         echo "Determining current LIVE environment by querying ALB Rule..."
                         def liveTargetGroupArn = sh(
