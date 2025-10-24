@@ -17,8 +17,8 @@ pipeline {
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN'niz
 
         // --- Server IPs ---
-        BLUE_SERVER_IP = '34.230.85.148'  // Sunucu B (Blue) Public IP Adresi
-        GREEN_SERVER_IP = '98.81.246.237' // Sunucu C (Green) Public IP Adresi
+        BLUE_SERVER_IP = '54.87.26.234'  // Sunucu B (Blue) Public IP Adresi
+        GREEN_SERVER_IP = '18.209.12.9' // Sunucu C (Green) Public IP Adresi
     }
 
     stages {
@@ -40,17 +40,19 @@ pipeline {
             }
         }
 
-        // *** UV Audit Düzeltmesi ***
+        // *** DÜZELTİLMİŞ Vulnerability Check ***
         stage('Vulnerability Check') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing uv if not present...' // Yedek
                 sh 'command -v uv || (curl -LsSf https://astral.sh/uv/install.sh | sh && mv $HOME/.cargo/bin/uv /usr/local/bin/)'
-                echo 'Checking for known vulnerabilities using uv...'
-                // Bağımlılıkları uv ile kur (audit için gerekli)
+                echo 'Checking for known vulnerabilities using pip-audit...'
+                // 1. Proje bağımlılıklarını uv ile kur (pip-audit'in taraması için gerekli)
                 sh 'uv pip install --quiet --system -r requirements.txt'
-                // *** DÜZELTME: Doğru komut 'uv audit' ***
-                sh 'uv audit'
+                // 2. pip-audit aracını uv ile kur
+                sh 'uv pip install --quiet --system pip-audit'
+                // 3. pip-audit komutunu çalıştır
+                sh 'pip-audit'
                 echo '✅ Vulnerability check passed.'
             }
         }
