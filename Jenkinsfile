@@ -57,6 +57,8 @@ pipeline {
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
                 // Proje bağımlılıkları önceki aşamada kurulduğu için burada tekrar kurulmuyor.
+                echo 'Installing project dependencies for tests...'
+                sh 'pip install --quiet -r requirements.txt'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
                         --cov-report=xml:coverage.xml --cov-report=term-missing \
