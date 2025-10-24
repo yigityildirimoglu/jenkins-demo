@@ -62,8 +62,14 @@ pipeline {
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
                 echo 'Installing project dependencies (including dev) for tests using uv sync...'
-                // *** DÜZELTME: --system kaldırıldı ***
-                sh 'uv sync --dev' // dev bağımlılıklarını da kur
+                // uv sync komutunu daha ayrıntılı çalıştıralım (-v) ve çıkış kodunu kontrol edelim
+                sh 'uv sync --dev -v || echo "uv sync failed!"'
+                echo "Checking installed packages after uv sync:"
+                // Kurulumdan sonra hangi paketlerin olduğunu listeleyelim
+                sh 'uv pip list'
+                // Python'un fastapi'yi bulup bulamadığını manuel test edelim
+                echo "Attempting to import fastapi from Python..."
+                sh 'python -c "import fastapi; print(\'FastAPI import successful!\')"'
                 echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
