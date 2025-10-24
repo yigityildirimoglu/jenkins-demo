@@ -81,7 +81,11 @@ async def get_items():
 @app.get("/items/{item_id}", response_model=Item)
 async def get_item(item_id: int):
     """Get a specific item by ID"""
-    logger.info(f"Attempting to retrieve item with ID: {item_id} from '/items/{{item_id}}' endpoint.")
+    # DÜZELTME: Uzun satır ikiye bölündü (E501)
+    logger.info(
+        f"Attempting to retrieve item with ID: {item_id} "
+        f"from '/items/{{item_id}}' endpoint."
+    )
     for item in items_db:
         if item.id == item_id:
             logger.info(f"Item with ID {item_id} found: {item}")
@@ -137,7 +141,11 @@ def calculate_discount(price: float, discount_percent: float) -> float:
         logger.warning(f"Invalid discount percentage provided: {discount_percent}")
         raise ValueError("Discount must be between 0 and 100")
     discounted_price = price * (1 - discount_percent / 100)
-    logger.debug(f"Calculated discount: Original={price}, Percent={discount_percent}, Discounted={discounted_price}") # DEBUG seviyesi loglar varsayılan olarak görünmez
+    # DÜZELTME: Uzun satır ikiye bölündü (E501) ve yorum öncesi boşluk düzeltildi (E261)
+    logger.debug(
+        f"Calculated discount: Original={price}, Percent={discount_percent}, "
+        f"Discounted={discounted_price}"
+    )  # DEBUG seviyesi loglar varsayılan olarak görünmez
     return discounted_price
 
 
@@ -146,3 +154,4 @@ if __name__ == "__main__":
     logger.info("Starting Jenkins Demo API...")
     # Portu tekrar 8000 olarak düzelttim, Jenkinsfile'daki -p 8001:8000 ile eşleşmesi için.
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    
