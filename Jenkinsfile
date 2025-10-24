@@ -17,8 +17,8 @@ pipeline {
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN'niz
 
         // --- Server IPs ---
-        BLUE_SERVER_IP = '3.85.126.75'  // Sunucu B (Blue) Public IP Adresi
-        GREEN_SERVER_IP = '3.94.186.17' // Sunucu C (Green) Public IP Adresi
+        BLUE_SERVER_IP = '54.87.26.234'  // Sunucu B (Blue) Public IP Adresi
+        GREEN_SERVER_IP = '18.209.12.9' // Sunucu C (Green) Public IP Adresi
     }
 
     stages {
@@ -40,7 +40,7 @@ pipeline {
             }
         }
 
-        // *** pip Açığı Susturulmuş Vulnerability Check ***
+        // pip Açığı Susturulmuş Vulnerability Check
         stage('Vulnerability Check') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
@@ -51,7 +51,7 @@ pipeline {
                 sh 'uv pip install --quiet --system -r requirements.txt'
                 // 2. pip-audit aracını uv ile kur
                 sh 'uv pip install --quiet --system pip-audit'
-                // *** DÜZELTME: pip açığını (GHSA-4xh5-x5gv-qwph) yok say ***
+                // 3. pip-audit komutunu pip açığını yok sayarak çalıştır
                 sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph'
                 echo '✅ Vulnerability check passed (pip vuln ignored).'
             }
@@ -194,7 +194,8 @@ print(f'{line_rate * 100:.2f}')
                                         docker rm jenkins-demo-app || true
 
                                         echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
-                                        docker run -d --name jenkins-demo-app -p 8001:8000 ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+                                        # *** DÜZELTME: --restart unless-stopped eklendi ***
+                                        docker run -d --name jenkins-demo-app -p 8001:8000 --restart unless-stopped ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
 
                                         echo "🧹 [${deployServerIp}] Pruning old images..."
                                         docker image prune -f
