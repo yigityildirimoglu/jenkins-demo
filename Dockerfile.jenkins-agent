@@ -1,0 +1,43 @@
+# Bu Dockerfile, Jenkins Pipeline'ındaki test ve lint aşamaları için
+# önceden gerekli Python ve sistem araçlarını içeren özel bir Docker imajı oluşturur.
+# Bu imajı kullanarak, her build'de araçları tekrar tekrar kurma ihtiyacını ortadan kaldırırız,
+# bu da pipeline'ın daha hızlı ve verimli çalışmasını sağlar.
+
+# Temel imaj olarak resmi Python 3.11 slim sürümünü kullanıyoruz.
+# 'slim' versiyonları daha küçüktür ve gereksiz bağımlılıkları içermez.
+FROM python:3.11-slim
+
+# Dockerfile içindeki komutlar varsayılan olarak root kullanıcısı olarak çalışır.
+
+# 1. Adım: Sistem Bağımlılıklarını Kurma
+# apt-get update: Paket listelerini günceller.
+# apt-get install -y --no-install-recommends: Gerekli sistem paketlerini kurar.
+#   -y: Tüm sorulara 'yes' der.
+#   --no-install-recommends: Sadece zorunlu bağımlılıkları kurar, önerilenleri atlar (imaj boyutunu küçültür).
+#   bc: Bash script'lerinde matematiksel hesaplamalar yapmak için kullanılan araç (kapsam kontrolü için).
+#   git: Kod deposundan çekim yapmak için gerekli (bazen bazı araçlar git'e bağımlı olabilir).
+# rm -rf /var/lib/apt/lists/*: İndirilen paket listelerini temizler. Bu, imaj boyutunu önemli ölçüde küçültür.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends bc git && \
+    rm -rf /var/lib/apt/apt/lists/*
+
+# 2. Adım: Python Bağımlılıklarını Kurma
+# pip install --no-cache-dir --upgrade pip: pip'i günceller ve indirme önbelleğini temizler (boyut için).
+# pip install --no-cache-dir flake8 pytest pytest-cov: Projemizin CI aşamalarında ihtiyaç duyduğu
+# Python paketlerini kurar.
+#   flake8: Kod stili ve lint kontrolü aracı.
+#   pytest: Python test çatısı.
+#   pytest-cov: pytest ile birlikte kod kapsamını ölçmek için kullanılan eklenti.
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir flake8 pytest pytest-cov
+
+# 3. Adım (Opsiyonel): Varsayılan Çalışma Dizini Ayarlama
+# WORKDIR komutu, bu imajdan bir konteyner başlatıldığında varsayılan olarak hangi dizinde olacağımızı belirler.
+# Jenkins, kodu genellikle bu WORKDIR altına checkout eder.
+WORKDIR /app
+
+# 4. Adım (Opsiyonel): Konteyner Başlatıldığında Varsayılan Komut
+# CMD ["python", "--version"]: Bu imajdan bir konteyner 'docker run' ile direkt başlatılırsa
+# çalışacak varsayılan komutu belirtir. Jenkins agent olarak kullandığında bu komut genellikle ezilir.
+# Sadece imajın doğru çalıştığını test etmek için faydalıdır.
+CMD ["python", "--version"]
