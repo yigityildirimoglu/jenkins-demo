@@ -17,8 +17,8 @@ pipeline {
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1' // Green Target Group ARN'niz
 
         // --- Server IPs ---
-        BLUE_SERVER_IP = '54.87.26.234'  // Sunucu B (Blue) Public IP Adresi
-        GREEN_SERVER_IP = '18.209.12.9' // Sunucu C (Green) Public IP Adresi
+        BLUE_SERVER_IP = '3.85.126.75'  // Sunucu B (Blue) Public IP Adresi
+        GREEN_SERVER_IP = '3.94.186.17' // Sunucu C (Green) Public IP Adresi
     }
 
     stages {
