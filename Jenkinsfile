@@ -61,15 +61,13 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
-                echo 'Installing project dependencies (including dev) for tests using uv sync...'
-                // uv sync komutunu daha ayrıntılı çalıştıralım (-v) ve çıkış kodunu kontrol edelim
-                sh 'uv sync --dev -v || echo "uv sync failed!"'
-                echo "Checking installed packages after uv sync:"
-                // Kurulumdan sonra hangi paketlerin olduğunu listeleyelim
-                sh 'uv pip list'
-                // Python'un fastapi'yi bulup bulamadığını manuel test edelim
+                echo 'Installing project dependencies (including dev) for tests using uv pip install...'
+                // *** DÜZELTME: uv sync --dev yerine uv pip install .[all] deniyoruz ***
+                sh 'uv pip install --quiet --system ".[all]"'
+                echo "Checking installed packages after uv pip install:"
+                sh 'uv pip list' // Kontrol edelim
                 echo "Attempting to import fastapi from Python..."
-                sh 'python -c "import fastapi; print(\'FastAPI import successful!\')"'
+                sh 'python -c "import fastapi; print(\'FastAPI import successful!\')"' // Kontrol edelim
                 echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
