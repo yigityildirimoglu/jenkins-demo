@@ -6,7 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
-        PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:v1.0.0-uv' // Agent imajınız
+        PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:v1.0.0-uv'
 
         // --- AWS Configuration ---
         AWS_REGION = 'us-east-1'
@@ -22,7 +22,7 @@ pipeline {
 
     stages {
         stage('Checkout') {
-             steps {
+            steps {
                 echo 'Checking out code from Git...'
                 checkout scm
             }
@@ -32,8 +32,8 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing project dependencies using uv sync...'
-                sh 'uv sync' // Ana bağımlılıklar
-                sh 'echo "Project dependencies installed."'
+                sh 'uv sync --frozen'
+                echo '✅ Project dependencies installed.'
             }
         }
 
@@ -41,8 +41,8 @@ pipeline {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Checking for known vulnerabilities using pip-audit...'
-                sh 'uv sync' // Bağımlılıkları kur
-                sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph' // pip açığını yok say
+                sh 'uv sync --frozen'
+                sh 'uv run pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph'
                 echo '✅ Vulnerability check passed.'
             }
         }
@@ -50,30 +50,27 @@ pipeline {
         stage('Lint') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
-                echo 'Running code quality checks (flake8 is pre-installed)...'
-                sh 'flake8 app/ tests/ --config=.flake8'
+                echo 'Running code quality checks with flake8...'
+                sh 'uv sync --frozen'
+                sh 'uv run flake8 app/ tests/ --config=.flake8'
+                echo '✅ Linting passed.'
             }
         }
 
-        // *** DÜZELTME: uv pip install ".[dev]" kullanılıyor ***
         stage('Unit Tests') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
-                echo 'Running unit tests with coverage (pytest is pre-installed)...'
-                echo 'Installing project dependencies (including dev) for tests using uv pip install...'
-                // uv sync --dev yerine uv pip install .[dev] deniyoruz
-                sh 'uv pip install --quiet --system ".[dev]"'
-                echo "Checking installed packages after uv pip install:"
-                sh 'uv pip list' // Kontrol edelim
-                echo "Attempting to import fastapi and httpx from Python..."
-                // Python'un httpx'i de bulup bulamadığını test edelim
-                sh 'python -c "import fastapi; import httpx; print(\'FastAPI and httpx import successful!\')"'
-                echo 'Executing pytest...'
+                echo 'Running unit tests with coverage...'
+                sh 'uv sync --frozen --all-extras'
                 sh '''
-                    pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
-                        --cov-report=xml:coverage.xml --cov-report=term-missing \
+                    uv run pytest tests/ --verbose \
+                        --cov=app \
+                        --cov-report=html:htmlcov \
+                        --cov-report=xml:coverage.xml \
+                        --cov-report=term-missing \
                         --junitxml=test-results.xml
                 '''
+                echo '✅ Tests completed.'
             }
         }
 
@@ -82,7 +79,7 @@ pipeline {
             steps {
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
                 sh '''
-                    coverage_percentage=$(python -c "
+                    coverage_percentage=$(uv run python -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
 root = tree.getroot()
@@ -104,7 +101,7 @@ print(f'{line_rate * 100:.2f}')
 
         stage('Build Docker Image') {
             steps {
-                script { ->
+                script {
                     echo '🐳 Building Docker image...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
@@ -113,9 +110,10 @@ print(f'{line_rate * 100:.2f}')
                 }
             }
         }
+
         stage('Push to Docker Hub') {
             steps {
-                script { ->
+                script {
                     echo '📤 Pushing Docker image to Docker Hub...'
                     def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
                     def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
@@ -137,29 +135,93 @@ print(f'{line_rate * 100:.2f}')
         stage('Deploy Blue/Green') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
-                    script { ->
-                        // 1. Canlı vs Boşta ortamı belirle
-                        // ... ( önceki kod gibi ) ...
-                        // 2. Boştaki sunucuya deploy et
-                        // ... ( önceki kod gibi ) ...
-                        // 3. Boştaki sunucuda sağlık kontrolü
-                        // ... ( önceki kod gibi ) ...
-                        // 4. Trafiği ALB üzerinden çevir
-                        // ... ( önceki kod gibi ) ...
-                    } // script kapanışı
-                } // withCredentials [AWS] kapanışı
-            } // steps kapanışı
-        } // stage Deploy Blue/Green kapanışı
-    } // stages bloğu kapanışı
+                    script {
+                        echo '🚀 Starting Blue/Green Deployment...'
+                        
+                        // 1. Canlı ortamı belirle
+                        def currentTarget = sh(
+                            script: """
+                                aws elbv2 describe-rules \
+                                    --listener-arn ${ALB_LISTENER_ARN} \
+                                    --region ${AWS_REGION} \
+                                    --query "Rules[?RuleArn=='${ALB_RULE_ARN}'].Actions[0].TargetGroupArn" \
+                                    --output text
+                            """,
+                            returnStdout: true
+                        ).trim()
+                        
+                        def isBlueActive = currentTarget == BLUE_TG_ARN
+                        def targetServer = isBlueActive ? GREEN_SERVER_IP : BLUE_SERVER_IP
+                        def targetTG = isBlueActive ? GREEN_TG_ARN : BLUE_TG_ARN
+                        def targetEnv = isBlueActive ? 'GREEN' : 'BLUE'
+                        
+                        echo "📍 Current active: ${isBlueActive ? 'BLUE' : 'GREEN'}"
+                        echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
+                        
+                        // 2. Deploy yap
+                        sh """
+                            ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} '
+                                docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} && \
+                                docker stop myapp || true && \
+                                docker rm myapp || true && \
+                                docker run -d --name myapp -p 8000:8000 ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+                            '
+                        """
+                        
+                        // 3. Health check
+                        echo '🏥 Running health checks...'
+                        def healthOk = false
+                        for (int i = 0; i < 30; i++) {
+                            try {
+                                def healthStatus = sh(
+                                    script: "curl -s -o /dev/null -w '%{http_code}' http://${targetServer}:8000/health || echo '000'",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (healthStatus == '200') {
+                                    echo "✅ Health check passed!"
+                                    healthOk = true
+                                    break
+                                }
+                                echo "⏳ Waiting for service... (${i+1}/30)"
+                                sleep 2
+                            } catch (Exception e) {
+                                echo "⚠️  Health check attempt ${i+1} failed: ${e.message}"
+                            }
+                        }
+                        
+                        if (!healthOk) {
+                            error("❌ Health check failed after 60 seconds!")
+                        }
+                        
+                        // 4. Traffic switch
+                        echo '🔄 Switching traffic to new environment...'
+                        sh """
+                            aws elbv2 modify-rule \
+                                --rule-arn ${ALB_RULE_ARN} \
+                                --actions Type=forward,TargetGroupArn=${targetTG} \
+                                --region ${AWS_REGION}
+                        """
+                        
+                        echo "✅ Traffic switched to ${targetEnv}!"
+                        echo "🎉 Blue/Green deployment completed successfully!"
+                    }
+                }
+            }
+        }
+    }
 
-    // --- Post Actions (Değişiklik Yok) ---
     post {
         always {
-             junit testResults: 'test-results.xml', allowEmptyResults: true
-             publishHTML(
-                allowMissing: true, alwaysLinkToLastBuild: true, keepAll: true,
-                reportDir: 'htmlcov', reportFiles: 'index.html', reportName: 'Coverage Report'
-             )
+            junit testResults: 'test-results.xml', allowEmptyResults: true
+            publishHTML(
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'htmlcov',
+                reportFiles: 'index.html',
+                reportName: 'Coverage Report'
+            )
         }
         success {
             echo '✅ Pipeline completed successfully!'

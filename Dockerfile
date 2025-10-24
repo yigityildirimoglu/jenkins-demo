@@ -1,32 +1,67 @@
-# Temel imaj olarak resmi Python slim sürümünü kullanıyoruz.
-FROM python:3.11-slim
+# ============================================
+# Stage 1: Builder - Dependencies kurulumu
+# ============================================
+FROM python:3.11-slim AS builder
 
-# Konteyner içindeki çalışma dizinini /app olarak ayarlıyoruz.
 WORKDIR /app
 
-# 1. Gerekli sistem paketlerini (curl dahil) kuruyoruz.
+# Sistem bağımlılıklarını kur
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# 2. uv paket yöneticisini curl kullanarak indirip kuruyoruz.
+# UV paket yöneticisini kur
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. uv'nin kurulduğu dizini (/root/.local/bin) PATH ortam değişkenine ekliyoruz.
+# UV'yi PATH'e ekle
 ENV PATH="/root/.local/bin:${PATH}"
 
-# 4. Proje tanım ve kilit dosyalarını kopyalıyoruz.
+# Dependency dosyalarını kopyala (code'dan önce - cache optimization)
 COPY pyproject.toml uv.lock ./
 
-# 5. Proje bağımlılıklarını uv sync kullanarak KİLİT DOSYASINDAN kuruyoruz.
-#    DÜZELTME: --system kaldırıldı.
-RUN uv sync --no-cache
+# Bağımlılıkları system-wide kur (--system flag ile)
+RUN uv sync --frozen --no-cache --system
 
-# 6. Uygulama kodumuzu (yerel ./app dizinini) konteynerdeki /app dizinine kopyalıyoruz.
-COPY ./app /app
+# ============================================
+# Stage 2: Runtime - Minimal production image
+# ============================================
+FROM python:3.11-slim AS runtime
 
-# 7. Python'a /app dizinini import edebileceği yollara eklemesini söylüyoruz.
-ENV PYTHONPATH=/app
+WORKDIR /app
 
-# 8. Konteyner başladığında çalıştırılacak varsayılan komut.
+# Sadece runtime için gerekli paketler
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Non-root user oluştur (security best practice)
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Builder stage'den Python paketlerini kopyala
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Uygulama kodunu kopyala
+COPY --chown=appuser:appuser ./app /app
+
+# Python optimizasyonları
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# Non-root user'a geç
+USER appuser
+
+# Health check ekle
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Port expose et
+EXPOSE 8000
+
+# Application'ı başlat
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
