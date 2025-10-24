@@ -6,7 +6,7 @@ pipeline {
         DOCKER_IMAGE_NAME = 'yigittq/jenkins-demo-api' // Docker Hub kullanıcı adınız/repo adınız
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         DOCKER_REGISTRY = 'docker.io'
-        // *** OPTİMİZASYON: Özel agent imajınızın adını buraya yazın ***
+        // *** DİKKAT: Kendi özel agent imajınızın adını buraya yazın ***
         PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:latest' // Kendi imaj adınızla değiştirin
 
         // --- AWS Configuration ---
@@ -29,9 +29,7 @@ pipeline {
             }
         }
 
-        // *** OPTİMİZE EDİLMİŞ: Sadece proje bağımlılıkları kuruluyor ***
         stage('Install Project Dependencies') {
-            // Özel agent imajı kullanılıyor
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing ONLY project Python dependencies...'
@@ -40,25 +38,43 @@ pipeline {
             }
         }
 
-        // *** OPTİMİZE EDİLMİŞ: Araç kurulumu yok ***
+        // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        // + YENİ AŞAMA: Bağımlılık Güvenlik Açığı Taraması
+        // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        stage('Vulnerability Check') {
+            // Özel agent imajını kullanıyoruz, ancak pip-audit'i ve bağımlılıkları burada da kurmamız gerekiyor.
+            agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
+            steps {
+                echo 'Checking for known vulnerabilities in Python dependencies...'
+                // pip-audit aracını kuruyoruz.
+                sh 'pip install --quiet pip-audit'
+                // Proje bağımlılıklarını kuruyoruz (pip-audit'in tarayabilmesi için gerekli).
+                sh 'pip install --quiet -r requirements.txt'
+                // pip-audit'i çalıştırıyoruz. Eğer açık bulursa, sıfırdan farklı bir exit code
+                // döndürerek bu sh adımını ve dolayısıyla pipeline'ı durdurur.
+                sh 'pip-audit'
+                echo '✅ Vulnerability check passed. No known critical vulnerabilities found.'
+            }
+        }
+        // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
         stage('Lint') {
-            // Özel agent imajı kullanılıyor
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running code quality checks (flake8 is pre-installed)...'
+                // Lint aşamasının bağımlılıklara ihtiyacı olmadığı varsayımıyla burada tekrar kurmuyoruz.
                 sh 'flake8 app/ tests/ --config=.flake8'
             }
         }
 
-        // *** OPTİMİZE EDİLMİŞ: Araç kurulumu yok ***
         stage('Unit Tests') {
-            // Özel agent imajı kullanılıyor
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
-                // Proje bağımlılıkları önceki aşamada kurulduğu için burada tekrar kurulmuyor.
+                // Testlerin çalışması için proje bağımlılıklarını burada tekrar kuruyoruz.
                 echo 'Installing project dependencies for tests...'
                 sh 'pip install --quiet -r requirements.txt'
+                echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
                         --cov-report=xml:coverage.xml --cov-report=term-missing \
@@ -67,14 +83,12 @@ pipeline {
             }
         }
 
-        // *** OPTİMİZE EDİLMİŞ: Araç kurulumu yok, bc imajda var ***
         stage('Coverage Check') {
-            // Özel agent imajı kullanılıyor
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
+                // Bu aşamanın proje bağımlılıklarına ihtiyacı yok, sadece xml dosyasına ve bc'ye ihtiyacı var.
                 sh '''
-                    # apt-get install bc KOMUTUNA GEREK YOK!
                     coverage_percentage=$(python -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
@@ -128,7 +142,6 @@ print(f'{line_rate * 100:.2f}')
             }
         }
         stage('Deploy Blue/Green') {
-             // Düzeltilmiş: Tüm aşama içeriği 'steps' bloğu içinde
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
                     script {
