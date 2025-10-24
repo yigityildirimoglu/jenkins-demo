@@ -23,55 +23,43 @@ pipeline {
         stage('Checkout') {
              steps {
                 echo 'Checking out code from Git...'
-                // Kodu (pyproject.toml ve uv.lock dahil) çeker
                 checkout scm
             }
         }
 
-        // *** UV SYNC ile GÜNCELLENDİ ***
         stage('Install Project Dependencies') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Installing project dependencies using uv sync...'
-                // Kilit dosyasını (uv.lock) kullanarak SADECE ana bağımlılıkları kurar
                 sh 'uv sync --system'
                 sh 'echo "Project dependencies installed."'
             }
         }
 
-        // *** UV SYNC ve Agent İmajı ile GÜNCELLENDİ ***
         stage('Vulnerability Check') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Checking for known vulnerabilities using pip-audit...'
-                // pip-audit'in kurulu ortamı tarayabilmesi için bağımlılıklar kurulmalı
-                // Sadece ana bağımlılıkları kurmak genellikle yeterlidir
-                sh 'uv sync --system'
-                // pip-audit komutunu çalıştır (agent imajında kurulu)
-                sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph' // pip açığını yok saymaya devam
+                sh 'uv sync --system' // Bağımlılıkları kur
+                sh 'pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph' // pip açığını yok say
                 echo '✅ Vulnerability check passed.'
             }
         }
 
-        // *** Agent İmajı ile GÜNCELLENDİ (Değişiklik yoktu) ***
         stage('Lint') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running code quality checks (flake8 is pre-installed)...'
-                // Lint için bağımlılık kurulumu gerekmez
                 sh 'flake8 app/ tests/ --config=.flake8'
             }
         }
 
-        // *** UV SYNC --dev ile GÜNCELLENDİ ***
         stage('Unit Tests') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo 'Running unit tests with coverage (pytest is pre-installed)...'
                 echo 'Installing project dependencies (including dev) for tests using uv sync...'
-                // Testlerin çalışması için hem ana hem de dev bağımlılıkları gerekli.
-                // uv sync --dev: kilit dosyasındaki dev bağımlılıklarını da kurar.
-                sh 'uv sync --dev --system'
+                sh 'uv sync --dev --system' // dev bağımlılıklarını da kur
                 echo 'Executing pytest...'
                 sh '''
                     pytest tests/ --verbose --cov=app --cov-report=html:htmlcov \
@@ -81,15 +69,13 @@ pipeline {
             }
         }
 
-        // *** Agent İmajı ile GÜNCELLENDİ (Değişiklik yoktu) ***
         stage('Coverage Check') {
             agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
             steps {
                 echo "Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
-                // Bağımlılık kurulumuna gerek yok
                 sh '''
                     coverage_percentage=$(python -c "
-import xml.tree.ElementTree as ET
+import xml.etree.ElementTree as ET
 tree = ET.parse('coverage.xml')
 root = tree.getroot()
 line_rate = float(root.attrib['line-rate'])
@@ -108,13 +94,136 @@ print(f'{line_rate * 100:.2f}')
             }
         }
 
-        // --- Build, Push, Deploy Aşamaları (Mantık Değişikliği Yok) ---
-        // Not: 'Build Docker Image' aşaması, sizin güncellediğiniz (uv sync kullanan)
-        // UYGULAMA Dockerfile'ını ('Dockerfile') kullanacaktır.
-        stage('Build Docker Image') { /* ... önceki gibi ... */ }
-        stage('Push to Docker Hub') { /* ... önceki gibi ... */ }
-        stage('Deploy Blue/Green') { /* ... önceki gibi ... */ }
+        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
+        stage('Build Docker Image') {
+            steps {
+                script { -> // Groovy syntax düzeltmesi
+                    echo '🐳 Building Docker image...'
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+                    // Bu komut, checkout edilen koddaki ana Dockerfile'ı kullanır
+                    sh "docker build -t ${imageTag} -t ${imageLatest} ."
+                    echo "✅ Docker image built: ${imageTag}, ${imageLatest}"
+                }
+            }
+        }
+        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
+        stage('Push to Docker Hub') {
+            steps {
+                script { -> // Groovy syntax düzeltmesi
+                    echo '📤 Pushing Docker image to Docker Hub...'
+                    def imageTag = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+                    def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            echo "🔐 Logging in to Docker Hub..."
+                            echo "${DOCKER_PASS}" | docker login -u ${DOCKER_USER} --password-stdin
+                            echo "📤 Pushing ${imageTag}..."
+                            docker push ${imageTag}
+                            echo "📤 Pushing ${imageLatest}..."
+                            docker push ${imageLatest}
+                            echo "✅ Docker images pushed successfully!"
+                        """
+                    }
+                }
+            }
+        }
+        // *** DÜZELTME: Doğru 'steps' blokları eklendi ***
+        stage('Deploy Blue/Green') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
+                    script { -> // Groovy syntax düzeltmesi
+                        // 1. Canlı vs Boşta ortamı belirle
+                        echo "Determining current LIVE environment by querying ALB Rule..."
+                        def liveTargetGroupArn = sh(
+                            script: """
+                                aws elbv2 describe-rules --rule-arn ${env.ALB_RULE_ARN} \\
+                                    --query 'Rules[0].Actions[0].TargetGroupArn' --output text --region ${env.AWS_REGION}
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        def deployTargetGroupArn
+                        def deployServerIp
+                        def deployTgFriendlyName
+                        def liveServerIp
+
+                        if (liveTargetGroupArn == env.BLUE_TG_ARN) {
+                            echo "Blue environment (${env.BLUE_SERVER_IP}) is LIVE. Deploying to GREEN."
+                            deployTargetGroupArn = env.GREEN_TG_ARN
+                            deployServerIp = env.GREEN_SERVER_IP
+                            deployTgFriendlyName = "GREEN"
+                            liveServerIp = env.BLUE_SERVER_IP
+                        } else if (liveTargetGroupArn == env.GREEN_TG_ARN) {
+                            echo "Green environment (${env.GREEN_SERVER_IP}) is LIVE. Deploying to BLUE."
+                            deployTargetGroupArn = env.BLUE_TG_ARN
+                            deployServerIp = env.BLUE_SERVER_IP
+                            deployTgFriendlyName = "BLUE"
+                            liveServerIp = env.GREEN_SERVER_IP
+                        } else {
+                            error "ALB Rule is pointing to an unknown Target Group ARN: ${liveTargetGroupArn}"
+                        }
+
+                        // 2. Boştaki sunucuya deploy et
+                        echo "Deploying image ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG} to IDLE [${deployTgFriendlyName}] server: ${deployServerIp}"
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sshagent(credentials: ['deploy-server-ssh-key']) {
+                                sh """
+                                    ssh -o StrictHostKeyChecking=no ec2-user@${deployServerIp} '
+                                        echo "🎯 [${deployServerIp}] Connected!"
+                                        echo "🔐 [${deployServerIp}] Logging in to Docker Hub..."
+                                        echo "\${DOCKER_PASS}" | docker login -u "\${DOCKER_USER}" --password-stdin
+
+                                        echo "🐳 [${deployServerIp}] Pulling image: ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
+                                        docker pull ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+
+                                        echo "🛑 [${deployServerIp}] Stopping old container..."
+                                        docker stop jenkins-demo-app || true
+                                        docker rm jenkins-demo-app || true
+
+                                        echo "🚀 [${deployServerIp}] Starting new container on port 8001..."
+                                        docker run -d --name jenkins-demo-app -p 8001:8000 --restart unless-stopped ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}
+
+                                        echo "🧹 [${deployServerIp}] Pruning old images..."
+                                        docker image prune -f
+
+                                        echo "✅ [${deployServerIp}] Deployment script finished."
+                                    '
+                                """
+                            }
+                        }
+
+                        // 3. Boştaki sunucuda sağlık kontrolü
+                        echo "Waiting for application to start on [${deployTgFriendlyName}] server (${deployServerIp}) before health check..."
+                        sleep(15) // Konteynerin başlaması için bekle
+
+                        echo "Performing health check on [${deployTgFriendlyName}] server: http://${deployServerIp}:8001/health"
+                        try {
+                            sh "curl -fsS http://${deployServerIp}:8001/health"
+                            echo "✅ [${deployTgFriendlyName}] Health check PASSED."
+                        } catch (ex) {
+                            echo "❌ [${deployTgFriendlyName}] Health check FAILED! See details below:"
+                            echo ex.getMessage()
+                            error "Deployment failed health check. Traffic switch aborted."
+                        }
+
+                        // 4. Trafiği ALB üzerinden çevir
+                        echo "Health check passed. Flipping ALB traffic to target group [${deployTgFriendlyName}] (${deployTargetGroupArn})..."
+                        sh """
+                            aws elbv2 modify-rule --rule-arn ${env.ALB_RULE_ARN} \\
+                                --actions Type=forward,TargetGroupArn=${deployTargetGroupArn} \\
+                                --region ${env.AWS_REGION}
+                        """
+
+                        echo "✅ SUCCESS! Traffic is now flowing to [${deployTgFriendlyName}]."
+                        echo "Old environment (Server IP: ${liveServerIp}) is now idle."
+                    } // script kapanışı
+                } // withCredentials [AWS] kapanışı
+            } // steps kapanışı
+        } // stage Deploy Blue/Green kapanışı
     } // stages bloğu kapanışı
+
+    // --- Post Actions (Değişiklik Yok) ---
     post {
         always {
              junit testResults: 'test-results.xml', allowEmptyResults: true
