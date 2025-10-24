@@ -17,12 +17,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 # 4. Proje tanım ve kilit dosyalarını kopyalıyoruz.
 COPY pyproject.toml uv.lock ./
-# VEYA eğer uv lock yerine requirements.lock kullanıyorsanız:
-# COPY pyproject.toml requirements.lock ./
 
 # 5. Proje bağımlılıklarını uv sync kullanarak KİLİT DOSYASINDAN kuruyoruz.
-#    Bu, sadece ana (runtime) bağımlılıkları kurar.
-RUN uv sync --system --no-cache
+#    DÜZELTME: --system kaldırıldı.
+RUN uv sync --no-cache
 
 # 6. Uygulama kodumuzu (yerel ./app dizinini) konteynerdeki /app dizinine kopyalıyoruz.
 COPY ./app /app
