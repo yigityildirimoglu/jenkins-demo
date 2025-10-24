@@ -1,0 +1,28 @@
+[project]
+# Projenin temel bilgileri
+name = "jenkins-demo-api"
+version = "1.0.0"
+description = "FastAPI Demo Application for Jenkins CI/CD Pipeline (uv based)"
+requires-python = ">=3.11" # Kullandığımız Python versiyonu
+
+# Uygulamanın çalışmak için ihtiyaç duyduğu ANA bağımlılıklar
+dependencies = [
+    "fastapi>=0.111.0",         # Güvenlik açığı giderilmiş güncel versiyon
+    "uvicorn[standard]>=0.27.0", # Uvicorn
+    "pydantic>=2.5.3",         # Pydantic
+    # 'starlette' FastAPI tarafından otomatik olarak doğru versiyon çekilecektir
+]
+
+# Geliştirme, test, lint vb. için gereken OPSİYONEL bağımlılıklar
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.4",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.26.0",       # FastAPI TestClient için
+    "flake8>=7.0.0",
+    "pip-audit>=2.6.1",
+    "python-dotenv==1.0.0", # Eğer kullanıyorsanız
+]
+
+# uv için özel ayarlar (şimdilik boş)
+[tool.uv]
