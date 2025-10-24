@@ -1,4 +1,4 @@
-# Jenkins CI aşamaları için uv ve gerekli araçları içeren özel agent imajı
+# Jenkins CI aşamaları için uv, güncel pip ve gerekli araçları içeren özel agent imajı
 FROM python:3.11-slim
 
 # 1. Sistem araçlarını (bc, git) kur (apt-get ile) - BU AYNI KALIYOR
@@ -6,15 +6,19 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends bc git && \
     rm -rf /var/lib/apt/lists/*
 
-# *** YENİ ADIM: uv'yi pip ile kur ***
+# 2. uv'yi pip ile kur - BU AYNI KALIYOR
 RUN pip install --no-cache-dir uv
 
-# 3. Python test/lint araçlarını uv ile kur (Artık uv PATH'de olmalı, pip ile kurulduğu için)
-#    uv komutunu doğrudan kullanabiliriz, tam yola gerek yok.
+# *** YENİ ADIM: pip, setuptools ve wheel'i uv kullanarak güncelle ***
+# Bu, pip-audit'in bulduğu pip açığını gidermelidir.
+RUN uv pip install --system --upgrade pip setuptools wheel
+
+# 4. Python test/lint araçlarını uv ile kur (Artık güncel pip ortamında)
+# uv komutunu doğrudan kullanabiliriz, tam yola gerek yok.
 RUN uv pip install --no-cache --system flake8 pytest pytest-cov
 
-# 4. Varsayılan çalışma dizini
+# 5. Varsayılan çalışma dizini
 WORKDIR /app
 
-# 5. Test için varsayılan komut
+# 6. Test için varsayılan komut
 CMD ["uv", "--version"]
