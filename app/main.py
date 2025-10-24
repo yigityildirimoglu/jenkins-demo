@@ -154,4 +154,3 @@ if __name__ == "__main__":
     logger.info("Starting Jenkins Demo API...")
     # Portu tekrar 8000 olarak düzelttim, Jenkinsfile'daki -p 8001:8000 ile eşleşmesi için.
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
