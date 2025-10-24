@@ -21,8 +21,9 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Dependency dosyalarını kopyala (code'dan önce - cache optimization)
 COPY pyproject.toml uv.lock ./
 
-# Bağımlılıkları system-wide kur (--system flag ile)
-RUN uv sync --frozen --no-cache --system
+# DÜZELTME: UV 0.9+ versiyonunda --system yok, direkt sync yapıyoruz
+# Virtual environment oluşturulacak ama Python paketleri /app/.venv/ içine gidecek
+RUN uv sync --frozen --no-cache
 
 # ============================================
 # Stage 2: Runtime - Minimal production image
@@ -41,17 +42,17 @@ RUN apt-get update && \
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
-# Builder stage'den Python paketlerini kopyala
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Builder stage'den virtual environment'i kopyala
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
 # Uygulama kodunu kopyala
 COPY --chown=appuser:appuser ./app /app
 
-# Python optimizasyonları
+# Python optimizasyonları ve virtual env PATH'e ekleme
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PATH="/app/.venv/bin:${PATH}"
 
 # Non-root user'a geç
 USER appuser
@@ -63,5 +64,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Port expose et
 EXPOSE 8000
 
-# Application'ı başlat
+# Application'ı başlat (artık uvicorn PATH'te)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
