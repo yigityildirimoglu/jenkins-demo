@@ -15,18 +15,20 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 # 3. uv'nin kurulduğu dizini (/root/.local/bin) PATH ortam değişkenine ekliyoruz.
 ENV PATH="/root/.local/bin:${PATH}"
 
-# 4. Bağımlılık dosyasını (requirements.txt) konteynere kopyalıyoruz.
-COPY requirements.txt requirements.txt
+# 4. Proje tanım ve kilit dosyalarını kopyalıyoruz.
+COPY pyproject.toml uv.lock ./
+# VEYA eğer uv lock yerine requirements.lock kullanıyorsanız:
+# COPY pyproject.toml requirements.lock ./
 
-# 5. Proje bağımlılıklarını uv kullanarak kuruyoruz.
-RUN uv pip install --no-cache --system -r requirements.txt
+# 5. Proje bağımlılıklarını uv sync kullanarak KİLİT DOSYASINDAN kuruyoruz.
+#    Bu, sadece ana (runtime) bağımlılıkları kurar.
+RUN uv sync --system --no-cache
 
 # 6. Uygulama kodumuzu (yerel ./app dizinini) konteynerdeki /app dizinine kopyalıyoruz.
 COPY ./app /app
 
-# 7. Python'a /app dizinini import edebileceği yollara eklemesini söylüyoruz (Ekstra güvence).
+# 7. Python'a /app dizinini import edebileceği yollara eklemesini söylüyoruz.
 ENV PYTHONPATH=/app
 
 # 8. Konteyner başladığında çalıştırılacak varsayılan komut.
-#    DÜZELTME: 'app.main:app' yerine 'main:app' kullanılıyor.
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
