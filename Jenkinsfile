@@ -1,7 +1,7 @@
 pipeline {
   agent any
 
-  // Parametreleştir (CI/CD'de env bazlı overside için)
+  // Parametreleştir (env bazlı override için)
   parameters {
     string(name: 'ALB_LISTENER_ARN', defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener/app/myy-app-alb/37b5761ecd032b70/06ce330922577902', description: 'ALB Listener ARN')
     string(name: 'ALB_RULE_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/1afe0a8efa857a88', description: 'ALB Rule ARN (switch edilecek)')
@@ -29,7 +29,6 @@ pipeline {
   }
 
   options {
-    // Konsolda satır sayısını azaltır, logları okunur yapar
     timestamps()
   }
 
@@ -41,8 +40,7 @@ pipeline {
       }
     }
 
-    // 🔹 Tüm kalite adımlarını TEK docker konteyner içinde çalıştırıyoruz:
-    //    1 kez uv sync → audit → lint → test → coverage.xml üretimi
+    // 🔹 audit + lint + test: tek docker konteyneri, tek uv sync
     stage('Quality & Tests') {
       agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
       steps {
@@ -76,23 +74,22 @@ pipeline {
       steps {
         sh '''
           set -Eeuo pipefail
-
           echo "📊 Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
-          coverage_percentage=$(uv run python -c "
-import xml.etree.ElementTree as ET
-root = ET.parse('coverage.xml').getroot()
-print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
-")
-          echo "Current coverage: ${coverage_percentage}%"
-          echo "Required coverage: ${COVERAGE_THRESHOLD}%"
 
-          result=$(echo "$coverage_percentage >= ${COVERAGE_THRESHOLD}" | bc -l)
-          if [ "$result" -eq 1 ]; then
-            echo "✅ Coverage check passed!"
-          else
-            echo "❌ Coverage ${coverage_percentage}% is below threshold ${COVERAGE_THRESHOLD}%"
-            exit 1
-          fi
+          # Heredoc ile Python: tırnak kaçmaları ve shell/groovy interpolation sorunları olmaz
+          uv run python - <<'PY'
+import os, sys
+import xml.etree.ElementTree as ET
+
+thr = float(os.environ.get('COVERAGE_THRESHOLD', '50'))
+root = ET.parse('coverage.xml').getroot()
+pct = float(root.attrib.get('line-rate', '0')) * 100.0
+
+print(f"Current coverage: {pct:.2f}%")
+print(f"Required coverage: {thr}%")
+
+sys.exit(0 if pct >= thr else 2)
+PY
         '''
       }
     }
@@ -103,9 +100,7 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
           echo '🐳 Building Docker image...'
           def imageTag    = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
           def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
-          sh '''
-            set -Eeuo pipefail
-          '''
+          sh 'set -Eeuo pipefail'
           sh "docker build -t ${imageTag} -t ${imageLatest} ."
           echo "✅ Docker image built: ${imageTag}, ${imageLatest}"
         }
@@ -119,9 +114,7 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
           def imageTag    = "${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
           def imageLatest = "${DOCKER_IMAGE_NAME}:latest"
           withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-            sh '''
-              set -Eeuo pipefail
-            '''
+            sh 'set -Eeuo pipefail'
             sh """
               echo "🔐 Logging in to Docker Hub..."
               echo "${DOCKER_PASS}" | docker login -u ${DOCKER_USER} --password-stdin
@@ -142,7 +135,7 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
           script {
             echo '🚀 Starting Blue/Green Deployment...'
 
-            // 1) ALB kuralı şu an hangi TG’ye forward ediyor? (forward action'a göre al)
+            // 1) Şu an forward edilen TG
             def currentTarget = sh(
               script: """
                 aws elbv2 describe-rules \
@@ -162,19 +155,19 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
             echo "📍 Current active: ${isBlueActive ? 'BLUE' : 'GREEN'}"
             echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
 
-            // 2) Tek port (8001): portu kim tutuyorsa isimden bağımsız temizle; daha az agresif prune
+            // 2) Tek port (8001): portu kim tutuyorsa isimden bağımsız temizle, nazik prune, yeni container
             sh """
               ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} << 'ENDSSH'
                 set -Eeuo pipefail
 
                 echo "🧹 Cleaning up Docker on \$(hostname)..."
-                # 8001'i publish eden TÜM container'ları temizle
+                # 8001'i publish eden TÜM container'ları temizle (isimden bağımsız)
                 docker ps -q --filter "publish=8001" | xargs -r docker rm -f
 
-                # İdempotent: aynı isim varsa ayrıca temizle
+                # İdempotent: aynı isimde varsa ayrıca temizle
                 docker rm -f myapp 2>/dev/null || true
 
-                # Daha az agresif temizleme (son 7 günden eski dangling/unused img'ler)
+                # Nazik prune (cache'i tamamen öldürme)
                 docker image prune -f --filter "until=168h" || true
                 docker container prune -f || true
 
@@ -193,7 +186,7 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
               ENDSSH
             """
 
-            // 3) Health check (120 sn'ye kadar bekle)
+            // 3) Health check (120 sn)
             echo '🏥 Running health checks...'
             def healthOk = false
             sleep 5
@@ -239,7 +232,6 @@ print(f'{float(root.attrib[\"line-rate\"])*100:.2f}')
         reportFiles: 'index.html',
         reportName: 'Coverage Report'
       )
-      // (İsteğe bağlı) çıktıların arşivi:
       archiveArtifacts artifacts: 'test-results.xml, coverage.xml, htmlcov/**', fingerprint: true, allowEmptyArchive: true
     }
     success { echo '✅ Pipeline completed successfully!' }
