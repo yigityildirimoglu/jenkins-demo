@@ -59,10 +59,10 @@ USER appuser
 
 # Health check ekle
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8001/health || exit 1
 
 # Port expose et
-EXPOSE 8000
+EXPOSE 8001
 
 # Application'ı başlat (artık uvicorn PATH'te)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

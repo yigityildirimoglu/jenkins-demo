@@ -17,7 +17,7 @@ pipeline {
 
         // --- Server IPs ---
         BLUE_SERVER_IP = '98.94.89.99'
-        GREEN_SERVER_IP = '13.221.17.82'
+        GREEN_SERVER_IP = '13.221.17.82'  // Log'dan gördüğüm IP
     }
 
     stages {
@@ -159,34 +159,61 @@ print(f'{line_rate * 100:.2f}')
                         echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
                         
                         // 2. Deploy yap
+                        echo "🔄 Stopping old container on ${targetEnv}..."
                         sh """
                             ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} '
-                                docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} && \
-                                docker stop myapp || true && \
-                                docker rm myapp || true && \
-                                docker run -d --name myapp -p 8001:8001 --restart unless-stopped ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+                                # Eski container'ı durdur ve sil
+                                docker stop myapp 2>/dev/null || true
+                                docker rm myapp 2>/dev/null || true
+                                
+                                # Yeni image'i çek
+                                docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+                                
+                                # Yeni container'ı başlat (8001:8001 mapping)
+                                docker run -d \
+                                    --name myapp \
+                                    -p 8001:8001 \
+                                    --restart unless-stopped \
+                                    ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+                                
+                                # Container başladı mı kontrol et
+                                sleep 2
+                                docker ps | grep myapp
                             '
                         """
                         
                         // 3. Health check
                         echo '🏥 Running health checks...'
                         def healthOk = false
-                        for (int i = 0; i < 2; i++) {
+                        
+                        // İlk önce container'ın ayağa kalkmasını bekle
+                        echo "⏳ Waiting for container to start..."
+                        sleep 5
+                        
+                        for (int i = 0; i < 30; i++) {
                             try {
                                 def healthStatus = sh(
-                                    script: "curl -s -o /dev/null -w '%{http_code}' http://${targetServer}:8001/health || echo '000'",
+                                    script: """
+                                        curl -s -o /dev/null -w '%{http_code}' \
+                                            --connect-timeout 2 \
+                                            --max-time 5 \
+                                            http://${targetServer}:8001/health || echo '000'
+                                    """,
                                     returnStdout: true
                                 ).trim()
+                                
+                                echo "Health check response: ${healthStatus}"
                                 
                                 if (healthStatus == '200') {
                                     echo "✅ Health check passed!"
                                     healthOk = true
                                     break
                                 }
-                                echo "⏳ Waiting for service... (${i+1}/30)"
+                                echo "⏳ Waiting for service... (${i+1}/30) - Status: ${healthStatus}"
                                 sleep 2
                             } catch (Exception e) {
                                 echo "⚠️  Health check attempt ${i+1} failed: ${e.message}"
+                                sleep 2
                             }
                         }
                         
