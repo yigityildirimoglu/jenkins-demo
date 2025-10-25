@@ -16,7 +16,7 @@ pipeline {
         GREEN_TG_ARN = 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1'
 
         // --- Server IPs ---
-        BLUE_SERVER_IP = '98.94.89.99'
+        BLUE_SERVER_IP = '54.87.26.234'
         GREEN_SERVER_IP = '13.221.17.82'  // Log'dan gördüğüm IP
     }
 
@@ -159,27 +159,37 @@ print(f'{line_rate * 100:.2f}')
                         echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
                         
                         // 2. Deploy yap
-                        echo "🔄 Stopping old container on ${targetEnv}..."
+                        echo "🔄 Deploying to ${targetEnv}..."
                         sh """
-                            ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} '
-                                # Eski containeri durdur ve sil
-                                docker stop myapp 2>/dev/null || true
-                                docker rm myapp 2>/dev/null || true
+                            ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} << 'ENDSSH'
+                                echo "🧹 Cleaning up Docker..."
                                 
-                                # Yeni imagei cek
+                                # Stop and remove myapp container (force)
+                                docker rm -f myapp 2>/dev/null || echo "No existing container"
+                                
+                                # Prune stopped containers
+                                docker container prune -f
+                                
+                                # Prune unused images (keep last 3)
+                                docker image prune -a -f --filter "until=72h"
+                                
+                                # Wait for cleanup
+                                sleep 2
+                                
+                                echo "📥 Pulling new image..."
                                 docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
                                 
-                                # Yeni containeri baslat (8001:8001 mapping)
+                                echo "🚀 Starting new container..."
                                 docker run -d \
                                     --name myapp \
                                     -p 8001:8001 \
                                     --restart unless-stopped \
                                     ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
                                 
-                                # Container basladi mi kontrol et
+                                echo "✅ Verifying..."
                                 sleep 2
                                 docker ps | grep myapp
-                            '
+ENDSSH
                         """
                         
                         // 3. Health check
