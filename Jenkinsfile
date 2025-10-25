@@ -162,21 +162,21 @@ print(f'{line_rate * 100:.2f}')
                         echo "🔄 Stopping old container on ${targetEnv}..."
                         sh """
                             ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} '
-                                # Eski container'ı durdur ve sil
+                                # Eski containeri durdur ve sil
                                 docker stop myapp 2>/dev/null || true
                                 docker rm myapp 2>/dev/null || true
                                 
-                                # Yeni image'i çek
+                                # Yeni imagei cek
                                 docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
                                 
-                                # Yeni container'ı başlat (8001:8001 mapping)
+                                # Yeni containeri baslat (8001:8001 mapping)
                                 docker run -d \
                                     --name myapp \
                                     -p 8001:8001 \
                                     --restart unless-stopped \
                                     ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
                                 
-                                # Container başladı mı kontrol et
+                                # Container basladi mi kontrol et
                                 sleep 2
                                 docker ps | grep myapp
                             '

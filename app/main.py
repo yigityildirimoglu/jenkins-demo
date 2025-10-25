@@ -51,7 +51,7 @@ item_counter = 1
 
 @app.get("/", response_model=HealthResponse)
 async def root():
-    """Root endpoint - health check"""
+    """Root endpoint - health check HElLOOO"""
     # Örnek INFO seviyesi log: Bir istek geldiğinde bilgi ver.
     logger.info("Root endpoint '/' called.")
     return HealthResponse(
