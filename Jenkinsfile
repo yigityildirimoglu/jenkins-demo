@@ -1,10 +1,9 @@
 pipeline {
   agent any
 
-  // Parametreleştir (env bazlı override için)
   parameters {
     string(name: 'ALB_LISTENER_ARN', defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener/app/myy-app-alb/37b5761ecd032b70/06ce330922577902', description: 'ALB Listener ARN')
-    string(name: 'ALB_RULE_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/1afe0a8efa857a88', description: 'ALB Rule ARN (switch edilecek)')
+    string(name: 'ALB_RULE_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/1afe0a8efa857a88', description: 'ALB Rule ARN')
     string(name: 'BLUE_TG_ARN',      defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a', description: 'BLUE Target Group ARN')
     string(name: 'GREEN_TG_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1', description: 'GREEN Target Group ARN')
     string(name: 'BLUE_SERVER_IP',   defaultValue: '54.87.26.234', description: 'BLUE sunucu IP')
@@ -28,9 +27,7 @@ pipeline {
     GREEN_SERVER_IP  = "${params.GREEN_SERVER_IP}"
   }
 
-  options {
-    timestamps()
-  }
+  options { timestamps() }
 
   stages {
     stage('Checkout') {
@@ -40,13 +37,11 @@ pipeline {
       }
     }
 
-    // 🔹 audit + lint + test: tek docker konteyneri, tek uv sync
     stage('Quality & Tests') {
       agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
       steps {
         sh '''
           set -Eeuo pipefail
-
           echo "🧩 uv sync (frozen) running..."
           uv sync --frozen --all-extras
 
@@ -75,19 +70,14 @@ pipeline {
         sh '''
           set -Eeuo pipefail
           echo "📊 Checking coverage threshold (${COVERAGE_THRESHOLD}%)..."
-
-          # Heredoc ile Python: tırnak kaçmaları ve shell/groovy interpolation sorunları olmaz
           uv run python - <<'PY'
 import os, sys
 import xml.etree.ElementTree as ET
-
 thr = float(os.environ.get('COVERAGE_THRESHOLD', '50'))
 root = ET.parse('coverage.xml').getroot()
 pct = float(root.attrib.get('line-rate', '0')) * 100.0
-
 print(f"Current coverage: {pct:.2f}%")
 print(f"Required coverage: {thr}%")
-
 sys.exit(0 if pct >= thr else 2)
 PY
         '''
@@ -135,7 +125,6 @@ PY
           script {
             echo '🚀 Starting Blue/Green Deployment...'
 
-            // 1) Şu an forward edilen TG
             def currentTarget = sh(
               script: """
                 aws elbv2 describe-rules \
@@ -155,38 +144,39 @@ PY
             echo "📍 Current active: ${isBlueActive ? 'BLUE' : 'GREEN'}"
             echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
 
-            // 2) Tek port (8001): portu kim tutuyorsa isimden bağımsız temizle, nazik prune, yeni container
-            sh """
-              ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} << 'ENDSSH'
-                set -Eeuo pipefail
+            // 🔧 SSH heredoc: stripIndent() ile SOL sütuna sabitlenir
+            sh(
+              script: """
+ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} <<'EOSSH'
+set -Eeuo pipefail
 
-                echo "🧹 Cleaning up Docker on \$(hostname)..."
-                # 8001'i publish eden TÜM container'ları temizle (isimden bağımsız)
-                docker ps -q --filter "publish=8001" | xargs -r docker rm -f
+echo "🧹 Cleaning up Docker on \$(hostname)..."
+# 8001'i publish eden TÜM container'ları temizle (isimden bağımsız)
+docker ps -q --filter "publish=8001" | xargs -r docker rm -f
 
-                # İdempotent: aynı isimde varsa ayrıca temizle
-                docker rm -f myapp 2>/dev/null || true
+# İdempotent: aynı isim varsa ayrıca temizle
+docker rm -f myapp 2>/dev/null || true
 
-                # Nazik prune (cache'i tamamen öldürme)
-                docker image prune -f --filter "until=168h" || true
-                docker container prune -f || true
+# Nazik prune (cache'i tamamen öldürme)
+docker image prune -f --filter "until=168h" || true
+docker container prune -f || true
 
-                echo "📥 Pulling new image..."
-                docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+echo "📥 Pulling new image..."
+docker pull ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
 
-                echo "🚀 Starting new container..."
-                docker run -d \\
-                  --name myapp \\
-                  -p 8001:8001 \\
-                  --restart unless-stopped \\
-                  ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
+echo "🚀 Starting new container..."
+docker run -d \\
+  --name myapp \\
+  -p 8001:8001 \\
+  --restart unless-stopped \\
+  ${DOCKER_IMAGE_NAME}:${DOCKER_TAG}
 
-                echo "✅ Post-run verify:"
-                docker ps --format 'table {{.ID}}\\t{{.Names}}\\t{{.Ports}}' | sed -n '1,8p'
-              ENDSSH
-            """
+echo "✅ Post-run verify:"
+docker ps --format 'table {{.ID}}\\t{{.Names}}\\t{{.Ports}}' | sed -n '1,8p'
+EOSSH
+              """.stripIndent()
+            )
 
-            // 3) Health check (120 sn)
             echo '🏥 Running health checks...'
             def healthOk = false
             sleep 5
@@ -205,7 +195,6 @@ PY
             }
             if (!healthOk) { error("❌ Health check failed after 120 seconds!") }
 
-            // 4) Trafiği yeni TG’ye çevir
             echo '🔄 Switching traffic to new environment...'
             sh """
               aws elbv2 modify-rule \
