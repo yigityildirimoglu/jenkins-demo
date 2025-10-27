@@ -6,7 +6,7 @@ pipeline {
     string(name: 'ALB_RULE_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:listener-rule/app/myy-app-alb/37b5761ecd032b70/06ce330922577902/1afe0a8efa857a88', description: 'ALB Rule ARN')
     string(name: 'BLUE_TG_ARN',      defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/blue-target-group/c30aa629d3539f3a', description: 'BLUE Target Group ARN')
     string(name: 'GREEN_TG_ARN',     defaultValue: 'arn:aws:elasticloadbalancing:us-east-1:339712914983:targetgroup/green-target-group/e2f25f519c58a5c1', description: 'GREEN Target Group ARN')
-    string(name: 'BLUE_SERVER_IP',   defaultValue: '54.87.26.234', description: 'BLUE sunucu IP')
+    string(name: 'BLUE_SERVER_IP',   defaultValue: '98.94.89.99', description: 'BLUE sunucu IP')
     string(name: 'GREEN_SERVER_IP',  defaultValue: '13.221.17.82', description: 'GREEN sunucu IP')
   }
 

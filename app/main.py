@@ -56,7 +56,7 @@ async def root():
     logger.info("Root endpoint '/' called.")
     return HealthResponse(
         status="ok",
-        message="Jenkins Demooo API is running!"
+        message="Jenkins Demooo API is running! Heyoooooo!"
     )
 
 
