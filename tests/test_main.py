@@ -30,7 +30,7 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert "Jenkins Demooo API is running! Heyoooooo! and you are awesome!" in data["message"]
+        assert "Jenkins Demooo API is running! Heyoooooo! and you are awesome and amazing!" in data["message"]
 
     def test_health_check_endpoint(self, client):
         """Test health check endpoint"""
