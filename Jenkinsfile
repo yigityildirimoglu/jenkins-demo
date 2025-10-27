@@ -121,9 +121,21 @@ PY
 
     stage('Deploy Blue/Green') {
       steps {
-        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials']]) {
+        withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-deploy-credentials'],
+          sshUserPrivateKey(credentialsId: 'ec2-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+        ]) {
           script {
             echo '🚀 Starting Blue/Green Deployment...'
+
+            // 🔍 DEBUG: Tüm rule'ları göster
+            sh """
+              echo "=== DEBUG: All ALB Rules ==="
+              aws elbv2 describe-rules \
+                --listener-arn ${ALB_LISTENER_ARN} \
+                --region ${AWS_REGION} \
+                --output json
+            """
 
             def currentTarget = sh(
               script: """
@@ -136,28 +148,37 @@ PY
               returnStdout: true
             ).trim()
 
+            // 🔍 DEBUG: Karşılaştırma değerlerini yazdır
+            echo """
+=== 🔍 DEBUG INFO ===
+Current Target    : ${currentTarget}
+BLUE_TG_ARN       : ${BLUE_TG_ARN}
+GREEN_TG_ARN      : ${GREEN_TG_ARN}
+Match with BLUE?  : ${currentTarget == BLUE_TG_ARN}
+Match with GREEN? : ${currentTarget == GREEN_TG_ARN}
+=====================
+            """
+
             def isBlueActive = (currentTarget == BLUE_TG_ARN)
             def targetServer = isBlueActive ? GREEN_SERVER_IP : BLUE_SERVER_IP
             def targetTG     = isBlueActive ? GREEN_TG_ARN : BLUE_TG_ARN
             def targetEnv    = isBlueActive ? 'GREEN' : 'BLUE'
 
-            echo "📍 Current active: ${isBlueActive ? 'BLUE' : 'GREEN'}"
-            echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
+            echo """
+📍 Current active environment: ${isBlueActive ? 'BLUE' : 'GREEN'}
+🎯 Deploying to: ${targetEnv}
+🖥️  Target Server: ${targetServer}
+🎯 Target TG: ${targetTG}
+            """
 
-            // 🔧 SSH heredoc: stripIndent() ile SOL sütuna sabitlenir
-            sh(
-              script: """
-ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} <<'EOSSH'
+            // 🔧 SSH with credential file
+            sh """
+              ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${targetServer} <<'EOSSH'
 set -Eeuo pipefail
 
 echo "🧹 Cleaning up Docker on \$(hostname)..."
-# 8001'i publish eden TÜM container'ları temizle (isimden bağımsız)
 docker ps -q --filter "publish=8001" | xargs -r docker rm -f
-
-# İdempotent: aynı isim varsa ayrıca temizle
 docker rm -f myapp 2>/dev/null || true
-
-# Nazik prune (cache'i tamamen öldürme)
 docker image prune -f --filter "until=168h" || true
 docker container prune -f || true
 
@@ -174,8 +195,7 @@ docker run -d \\
 echo "✅ Post-run verify:"
 docker ps --format 'table {{.ID}}\\t{{.Names}}\\t{{.Ports}}' | sed -n '1,8p'
 EOSSH
-              """.stripIndent()
-            )
+            """
 
             echo '🏥 Running health checks...'
             def healthOk = false
@@ -189,19 +209,43 @@ EOSSH
                 """,
                 returnStdout: true
               ).trim()
-              echo "Health check response: ${status}"
+              echo "Health check attempt ${i+1}/60: ${status}"
               if (status == '200') { healthOk = true; break }
               sleep 2
             }
             if (!healthOk) { error("❌ Health check failed after 120 seconds!") }
 
             echo '🔄 Switching traffic to new environment...'
+            echo "Will switch traffic to: ${targetTG}"
+            
             sh """
               aws elbv2 modify-rule \
                 --rule-arn ${ALB_RULE_ARN} \
                 --actions Type=forward,TargetGroupArn=${targetTG} \
                 --region ${AWS_REGION}
             """
+            
+            // 🔍 DEBUG: Traffic switch'ten sonra kontrol
+            def newTarget = sh(
+              script: """
+                aws elbv2 describe-rules \
+                  --listener-arn ${ALB_LISTENER_ARN} \
+                  --region ${AWS_REGION} \
+                  --query "Rules[?RuleArn=='${ALB_RULE_ARN}'].Actions[?Type=='forward']|[0][0].TargetGroupArn" \
+                  --output text
+              """,
+              returnStdout: true
+            ).trim()
+            
+            echo """
+=== ✅ Traffic Switch Verification ===
+Previous Target: ${currentTarget}
+New Target:      ${newTarget}
+Expected Target: ${targetTG}
+Switch Success:  ${newTarget == targetTG}
+====================================
+            """
+            
             echo "✅ Traffic switched to ${targetEnv}!"
             echo "🎉 Blue/Green deployment completed successfully!"
           }
