@@ -56,7 +56,7 @@ async def root():
     logger.info("Root endpoint '/' called.")
     return HealthResponse(
         status="ok",
-        message="Hello! you are awesome and amazing and wonderful and fantastic!"
+        message="Hello! you are awesome and amazing and wonderful and fantasticc!"
     )
 
 
