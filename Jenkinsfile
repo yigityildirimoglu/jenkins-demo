@@ -18,7 +18,7 @@ pipeline {
     PYTHON_AGENT_IMAGE = 'yigittq/my-python-agent:v1.0.0-uv'
 
     AWS_REGION       = 'us-east-1'
-    ALB_LISTENER_ARN = "${params.ALB_LISTENER_ARN}" // Bu parametre artık sorgu için kullanılmıyor ama ortamda kalabilir
+    ALB_LISTENER_ARN = "${params.ALB_LISTENER_ARN}"
     ALB_RULE_ARN     = "${params.ALB_RULE_ARN}"
     BLUE_TG_ARN      = "${params.BLUE_TG_ARN}"
     GREEN_TG_ARN     = "${params.GREEN_TG_ARN}"
@@ -126,20 +126,19 @@ PY
             echo '🚀 Starting Blue/Green Deployment...'
 
             // *** DÜZELTİLEN BÖLÜM BURASI ***
-            // Kuralı doğrudan ARN'si ile sorgula (daha güvenilir)
+            // Sorgu, 'ForwardConfig.TargetGroups' listesini okuyacak şekilde güncellendi
             def currentTarget = sh(
               script: """
                 aws elbv2 describe-rules \
                   --rule-arn ${ALB_RULE_ARN} \
                   --region ${AWS_REGION} \
-                  --query "Rules[0].Actions[?Type=='forward'][0].TargetGroupArn" \
+                  --query "Rules[0].Actions[?Type=='forward'][0].ForwardConfig.TargetGroups[0].TargetGroupArn" \
                   --output text
               """,
               returnStdout: true
             ).trim()
             // *** DÜZELTME SONU ***
 
-            // Debug için eklendi:
             echo "DEBUG: Sorgulanan Aktif Target ARN: [${currentTarget}]"
 
             def isBlueActive = (currentTarget == BLUE_TG_ARN)
