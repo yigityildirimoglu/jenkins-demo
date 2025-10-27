@@ -31,6 +31,7 @@ pipeline {
 
   stages {
     stage('Checkout') {
+      // ... (Değişiklik yok) ...
       steps {
         echo '📥 Checking out code from Git...'
         checkout scm
@@ -38,19 +39,17 @@ pipeline {
     }
 
     stage('Quality & Tests') {
+      // ... (Değişiklik yok) ...
       agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
       steps {
         sh '''
           set -Eeuo pipefail
           echo "🧩 uv sync (frozen) running..."
           uv sync --frozen --all-extras
-
           echo "🔎 pip-audit (known vulns)..."
           uv run pip-audit --ignore-vuln GHSA-4xh5-x5gv-qwph
-
           echo "🧼 flake8 lint..."
           uv run flake8 app/ tests/ --config=.flake8
-
           echo "🧪 pytest with coverage..."
           uv run pytest tests/ --verbose \
               --cov=app \
@@ -58,13 +57,13 @@ pipeline {
               --cov-report=xml:coverage.xml \
               --cov-report=term-missing \
               --junitxml=test-results.xml
-
           echo "✅ Quality & Tests finished."
         '''
       }
     }
 
     stage('Coverage Check') {
+      // ... (Değişiklik yok) ...
       agent { docker { image "${env.PYTHON_AGENT_IMAGE}"; args '-u root' } }
       steps {
         sh '''
@@ -85,6 +84,7 @@ PY
     }
 
     stage('Build Docker Image') {
+      // ... (Değişiklik yok) ...
       steps {
         script {
           echo '🐳 Building Docker image...'
@@ -98,6 +98,7 @@ PY
     }
 
     stage('Push to Docker Hub') {
+      // ... (Değişiklik yok) ...
       steps {
         script {
           echo '📤 Pushing Docker image to Docker Hub...'
@@ -125,8 +126,6 @@ PY
           script {
             echo '🚀 Starting Blue/Green Deployment...'
 
-            // *** DÜZELTİLEN BÖLÜM BURASI ***
-            // Sorgu, [?Type=='forward'] filtresi olmadan, doğrudan ilk eylemi seçecek şekilde basitleştirildi.
             def currentTarget = sh(
               script: """
                 aws elbv2 describe-rules \
@@ -137,13 +136,10 @@ PY
               """,
               returnStdout: true
             ).trim()
-            // *** DÜZELTME SONU ***
 
             echo "DEBUG: Sorgulanan Aktif Target ARN: [${currentTarget}]"
-
-            // Bu sorgunun hala "null" (string olarak) dönme ihtimaline karşı bir kontrol
             if (currentTarget == null || currentTarget.isEmpty() || currentTarget == "None") {
-                error("❌ Aktif Target Group ARN alınamadı! AWS CLI sorgusu 'null' veya boş döndü. Lütfen IAM izinlerini veya JMESPath sorgusunu kontrol edin.")
+                error("❌ Aktif Target Group ARN alınamadı! AWS CLI sorgusu 'null' veya boş döndü.")
             }
 
             def isBlueActive = (currentTarget == BLUE_TG_ARN)
@@ -154,7 +150,22 @@ PY
             echo "📍 Current active: ${isBlueActive ? 'BLUE' : 'GREEN'}"
             echo "🎯 Deploying to: ${targetEnv} (${targetServer})"
 
-            // 🔧 SSH heredoc: stripIndent() ile SOL sütuna sabitlenir
+            
+            // *** YENİ EKLENEN DEBUG BLOĞU ***
+            echo "DEBUG: Hangi 'varsayılan' SSH anahtarının kullanıldığını logluyorum..."
+            sh(
+              script: """
+                # -v: Verbose (ayrıntılı) modu açar, hangi anahtar dosyalarını denediğini gösterir
+                # -o ConnectTimeout=5: Hızlıca bağlanmayı dener
+                # "hostname": Sadece basit bir komut çalıştırır ve bağlantıyı kapatır
+                ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=5 ec2-user@${targetServer} "hostname"
+              """
+            )
+            echo "DEBUG: SSH loglama tamamlandı. Asıl deploy script'i başlıyor..."
+            // *** DEBUG BLOĞU SONU ***
+
+            
+            // 🔧 Asıl SSH heredoc komutları (değişiklik yok)
             sh(
               script: """
 ssh -o StrictHostKeyChecking=no ec2-user@${targetServer} <<'EOSSH'
@@ -188,6 +199,7 @@ EOSSH
             )
 
             echo '🏥 Running health checks...'
+            // ... (Health check logic - değişiklik yok) ...
             def healthOk = false
             sleep 5
             for (int i = 0; i < 60; i++) {
@@ -206,6 +218,7 @@ EOSSH
             if (!healthOk) { error("❌ Health check failed after 120 seconds!") }
 
             echo '🔄 Switching traffic to new environment...'
+            // ... (modify-rule logic - değişiklik yok) ...
             sh """
               aws elbv2 modify-rule \
                 --rule-arn ${ALB_RULE_ARN} \
@@ -221,6 +234,7 @@ EOSSH
   }
 
   post {
+    // ... (Değişiklik yok) ...
     always {
       junit testResults: 'test-results.xml', allowEmptyResults: true
       publishHTML(
