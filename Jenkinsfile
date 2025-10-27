@@ -126,13 +126,13 @@ PY
             echo '🚀 Starting Blue/Green Deployment...'
 
             // *** DÜZELTİLEN BÖLÜM BURASI ***
-            // Sorgu, 'ForwardConfig.TargetGroups' listesini okuyacak şekilde güncellendi
+            // Sorgu, [?Type=='forward'] filtresi olmadan, doğrudan ilk eylemi seçecek şekilde basitleştirildi.
             def currentTarget = sh(
               script: """
                 aws elbv2 describe-rules \
                   --rule-arn ${ALB_RULE_ARN} \
                   --region ${AWS_REGION} \
-                  --query "Rules[0].Actions[?Type=='forward'][0].ForwardConfig.TargetGroups[0].TargetGroupArn" \
+                  --query "Rules[0].Actions[0].TargetGroupArn" \
                   --output text
               """,
               returnStdout: true
@@ -140,6 +140,11 @@ PY
             // *** DÜZELTME SONU ***
 
             echo "DEBUG: Sorgulanan Aktif Target ARN: [${currentTarget}]"
+
+            // Bu sorgunun hala "null" (string olarak) dönme ihtimaline karşı bir kontrol
+            if (currentTarget == null || currentTarget.isEmpty() || currentTarget == "None") {
+                error("❌ Aktif Target Group ARN alınamadı! AWS CLI sorgusu 'null' veya boş döndü. Lütfen IAM izinlerini veya JMESPath sorgusunu kontrol edin.")
+            }
 
             def isBlueActive = (currentTarget == BLUE_TG_ARN)
             def targetServer = isBlueActive ? GREEN_SERVER_IP : BLUE_SERVER_IP
